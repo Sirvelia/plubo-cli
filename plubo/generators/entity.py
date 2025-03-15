@@ -1,7 +1,7 @@
 import os
 import curses
 from pathlib import Path
-from plubo.generators import project  # Import function to get the plugin name
+from plubo.utils import project  # Import function to get the plugin name
 
 # Define the absolute path to the templates directory (sibling folder)
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"  # Move up one level to reach sibling

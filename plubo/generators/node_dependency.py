@@ -1,5 +1,4 @@
 import subprocess
-import os
 import curses
 import time
 
@@ -16,21 +15,8 @@ WILDCAT_ASCII = r"""
        > ^ <  
 """
 
-def is_lando_project():
-    """Check if the project is running inside a Lando environment by searching for .lando.yml in parent directories."""
-    current_dir = os.getcwd()
-    while True:
-        lando_file = os.path.join(current_dir, ".lando.yml")
-        if os.path.exists(lando_file):
-            return True  # Found .lando.yml
-        parent_dir = os.path.dirname(current_dir)
-        if parent_dir == current_dir:
-            break  # Reached the root directory
-        current_dir = parent_dir
-    return False
-
 def install_dependency(stdscr, package_name):
-    """Install a specific Node dependency, handling Lando projects."""
+    """Install a specific Node dependency."""
     if not package_name:
         return  # Do nothing if the user selects "Back to Main Menu"
 

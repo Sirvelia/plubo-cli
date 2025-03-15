@@ -1,7 +1,8 @@
 import os
 import curses
 from pathlib import Path
-from plubo.generators import project  # Import function to get the plugin name
+from plubo.utils import project
+from plubo.generators import functionality
 
 def add_element(stdscr):
     """Displays a menu to select an entity type and prompts for details."""
@@ -105,12 +106,11 @@ def create_api_endpoint_file(namespace, path, type_choice):
     plugin_root = Path(os.getcwd())
     functionality_dir = plugin_root / "Functionality"
     api_file = functionality_dir / "ApiEndpoints.php"
-    template_file = Path(__file__).parent.parent / "templates/Functionality.php"
     
     functionality_dir.mkdir(parents=True, exist_ok=True)
     
     if not api_file.exists():
-        api_file.write_text(template_file.read_text())
+        functionality.create_functionality('Api Endpoints', "ApiEndpoints.php")
     
     with api_file.open("r", encoding="utf-8") as f:
         content = f.read()

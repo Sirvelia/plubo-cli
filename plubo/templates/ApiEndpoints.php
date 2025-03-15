@@ -23,14 +23,6 @@ class ApiEndpoints
 
     public function add_endpoints($endpoints)
     {
-        $endpoints = new GetEndpoint(
-            '',
-            '',
-            [
-                'name' => ''
-            ]
-        );
-
         return $endpoints;
     }
 }

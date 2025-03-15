@@ -1,7 +1,7 @@
 import subprocess
-import os
 import curses
 import time
+from plubo.utils import project
 
 DEPENDENCY_OPTIONS = {
     "Routes": "joanrodas/plubo-routes",
@@ -21,21 +21,6 @@ WILDCAT_ASCII = r"""
        > ^ <  
 """
 
-def is_lando_project():
-    """Check if the project is running inside a Lando environment by searching for .lando.yml in parent directories."""
-    current_dir = os.getcwd()  # Get the current working directory
-    while True:
-        lando_file = os.path.join(current_dir, ".lando.yml")
-        if os.path.exists(lando_file):
-            return True  # Found .lando.yml
-        parent_dir = os.path.dirname(current_dir)
-        if parent_dir == current_dir:
-            break  # Reached the root directory
-        current_dir = parent_dir
-    return False  # .lando.yml not found
-
-
-
 def install_dependency(stdscr, package_name):
     """Install a specific Composer dependency, handling Lando projects."""
     if not package_name:
@@ -44,7 +29,7 @@ def install_dependency(stdscr, package_name):
     curses.endwin()  # Exit curses mode so the user can interact normally
     print(f"\n⏳ Installing {package_name}...\n")  # Inform user
 
-    command = ["lando", "composer", "require", package_name] if is_lando_project() else ["composer", "require", package_name]
+    command = ["lando", "composer", "require", package_name] if project.is_lando_project() else ["composer", "require", package_name]
     
     process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=None, stderr=None)
     process.communicate()  # Wait for process to complete
