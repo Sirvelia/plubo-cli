@@ -53,13 +53,13 @@ def render_menu(stdscr, menu_options, current_row, height, width):
     # Calculate menu width based on the longest option
     menu_width = max(len(option) for option in menu_options) + 6
     menu_x = (width - menu_width) // 2  # Center the menu
-    menu_y = 10 
+    menu_y = 8
     
     # Outer Border
-    stdscr.addstr(1, 1, "╔" + "═" * (width - 4) + "╗", curses.color_pair(3))
+    stdscr.addstr(1, 2, "╔" + "═" * (width - 6) + "╗", curses.color_pair(3))
     for y in range(2, height - 2):
-        stdscr.addstr(y, 1, "║" + " " * (width - 4) + "║", curses.color_pair(3))
-    stdscr.addstr(height - 2, 1, "╚" + "═" * (width - 4) + "╝", curses.color_pair(3))
+        stdscr.addstr(y, 2, "║" + " " * (width - 6) + "║", curses.color_pair(3))
+    stdscr.addstr(height - 2, 2, "╚" + "═" * (width - 6) + "╝", curses.color_pair(3))
 
     # TITLE
     for i, line in enumerate(PB_CLI_ASCII):
@@ -82,14 +82,14 @@ def render_menu(stdscr, menu_options, current_row, height, width):
 
     # Inner Box for Menu
     stdscr.addstr(menu_y - 1, menu_x, "╔" + "═" * (menu_width - 2) + "╗", curses.color_pair(3))
-    for y in range(len(menu_options) + 2):
+    for y in range(len(menu_options) + 0):
         stdscr.addstr(menu_y + y, menu_x, "║" + " " * (menu_width - 2) + "║", curses.color_pair(3))
-    stdscr.addstr(menu_y + len(menu_options) + 2, menu_x, "╚" + "═" * (menu_width - 2) + "╝", curses.color_pair(3))
+    stdscr.addstr(menu_y + len(menu_options) + 0, menu_x, "╚" + "═" * (menu_width - 2) + "╝", curses.color_pair(3))
 
     # Display menu options
     for idx, option in enumerate(menu_options):
         x = menu_x + 4  
-        y = menu_y + 1 + idx  
+        y = menu_y + idx  
 
         if idx == current_row:
             stdscr.attron(curses.color_pair(2))
@@ -101,7 +101,7 @@ def render_menu(stdscr, menu_options, current_row, height, width):
     
     # Display the version at the bottom
     version_text = "plubo-cli v0.1"
-    stdscr.addstr(height - 4, (width - len(version_text)) // 2, version_text, curses.color_pair(3))
+    stdscr.addstr(height - 3, (width - len(version_text)) // 2, version_text, curses.color_pair(3))
 
 
     stdscr.refresh()
@@ -119,7 +119,7 @@ def render_menu(stdscr, menu_options, current_row, height, width):
         try:
             _, mouse_x, mouse_y, _, _ = curses.getmouse()  
             for idx, option in enumerate(menu_options):
-                y = menu_y + 1 + idx  # Match menu item y-position
+                y = menu_y + 0 + idx  # Match menu item y-position
                 if mouse_y == y:
                     return idx, current_row
         except curses.error:
