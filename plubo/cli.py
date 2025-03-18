@@ -2,40 +2,32 @@ import curses
 import sys
 import time
 from plubo.generators import functionality, component, entity, elements, php_dependency, node_dependency, plugin
-from plubo.utils import project
+from plubo.utils import project, interface
 from plubo.settings import settings
 
-# Wildcat ASCII Art
-WILDCAT_ASCII = r"""
-       /\_/\  
-      ( o.o )  WELCOME TO PLUBO-CLI!
-       > ^ <   
-"""
-
-
 MENU_OPTIONS_ALL = [
-    "Add Functionality Class",
-    "Add Component Class",
-    "Add Entity Class",
-    "Install PHP Dependency",
-    "Install Node Dependency",
-    "Add Element",
-    "Create Plugin",
-    "Init Repo",
-    "Rename Plugin",
-    "Settings",
-    "Exit"
+    "ADD FUNCTIONALITY CLASS",
+    "ADD COMPONENT CLASS",
+    "ADD ENTITY CLASS",
+    "INSTALL PHP DEPENDENCY",
+    "INSTALL NODE DEPENDENCY",
+    "ADD ELEMENT",
+    "CREATE PLUGIN",
+    "INIT REPO",
+    "RENAME PLUGIN",
+    "SETTINGS",
+    "EXIT"
 ]
 
 MENU_OPTIONS_WP_ONLY = [
-    "Create Plugin",
-    "Settings",
-    "Exit"
+    "CREATE PLUGIN",
+    "SETTINGS",
+    "EXIT"
 ]
 
 MENU_OPTIONS_NO_WP = [
-    "Settings",
-    "Exit"
+    "SETTINGS",
+    "EXIT"
 ]
 
 def get_menu_options():
@@ -50,144 +42,97 @@ def get_menu_options():
     
     return MENU_OPTIONS_ALL  # Inside a plugin
 
-def draw_background(stdscr):
-    """Draws the wildcat and Plubo version in the background"""
-    stdscr.clear()
     
-    height, width = stdscr.getmaxyx()
-    wildcat_lines = WILDCAT_ASCII.split("\n")
-
-    # Center the ASCII wildcat
-    start_x = (width // 2) - (max(len(line) for line in wildcat_lines) // 2)
-    start_y = 2  # Start near the top
-    
-    for i, line in enumerate(wildcat_lines):
-        stdscr.addstr(start_y + i, start_x, line, curses.color_pair(2))
-    
-    # Plugin name display
-    plugin_name = project.detect_plugin_name()
-    if plugin_name:
-        plugin_text = f"Plugin: {plugin_name}"
-        stdscr.addstr(5, 37, plugin_text, curses.color_pair(3) | curses.A_DIM)
-    
-    else:
-        wp_root = project.detect_wp_root()
-        if not wp_root:
-            stdscr.addstr(5, 37, "No WordPress installation found!", curses.color_pair(4) | curses.A_DIM)
-        else:
-            plugin_text = f"WP: {wp_root}"
-            stdscr.addstr(5, 37, plugin_text, curses.color_pair(3) | curses.A_DIM)
-
-    # Display the version at the bottom
-    version_text = "plubo-cli v0.1"
-    stdscr.addstr(height - 2, (width - len(version_text)) // 2, version_text, curses.color_pair(4))
-
 def menu(stdscr):
     """Displays the interactive full-terminal menu"""
     curses.curs_set(0)  # Hide cursor
-    stdscr.nodelay(0)
-    stdscr.timeout(100)
+    stdscr.keypad(True)
 
     curses.start_color()
-    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)  # Highlighted option
-    curses.init_pair(2, curses.COLOR_CYAN, curses.COLOR_BLACK)  # ASCII Wildcat
-    curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # Plugin Name Text
-    curses.init_pair(4, curses.COLOR_RED, curses.COLOR_BLACK)  # Version Text
+    # Check if terminal supports custom colors
+    if curses.can_change_color():
+        curses.init_color(1, 15 * 4, 56 * 4, 15 * 4)  # Dark Green (Text)
+        curses.init_color(2, 155 * 4, 188 * 4, 15 * 4)  # Light Green (Background)
+        curses.init_color(3, 48 * 4, 98 * 4, 48 * 4)  # Medium Green (Borders)
+
+        # Set color pairs
+        curses.init_pair(1, 1, curses.COLOR_WHITE)  # Normal Text (Dark Green on Light Green)
+        curses.init_pair(2, 4, curses.COLOR_WHITE)  # Highlighted Option
+        curses.init_pair(3, 3, curses.COLOR_WHITE)  # Titles & Borders
+        curses.init_pair(4, curses.COLOR_RED, curses.COLOR_WHITE)  # Error messages
+
+    else:
+        curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_WHITE)  # Normal text
+        curses.init_pair(2, curses.COLOR_BLUE, curses.COLOR_WHITE)  # Highlighted text
+        curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)  # Titles & Borders
+        curses.init_pair(4, curses.COLOR_RED, curses.COLOR_WHITE)  # Error messages
             
-    stdscr.keypad(True)
     
     # Enable mouse events
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
 
     current_row = 0
     
+    # Get initial screen size
+    height, width = stdscr.getmaxyx()
+    
+     # Ensure minimum size for UI
+    min_height, min_width = 12, 40  # Prevent tiny windows
+    if height < min_height or width < min_width:
+        stdscr.addstr(0, 0, "Terminal too small! Resize and restart.", curses.color_pair(4))
+        stdscr.refresh()
+        time.sleep(2)
+        return    
+        
     while True:
         menu_options = get_menu_options()
+        selected_row, current_row = interface.render_menu(stdscr, menu_options, current_row, height, width)
+        if selected_row is not None:
+            if handle_selection(stdscr, selected_row, menu_options, height, width):
+                return # Exit the CLI if handle_selection returns True
         
-        stdscr.clear()
-        draw_background(stdscr)  # Keep the wildcat & version persistent
-        height, width = stdscr.getmaxyx()
-
-        # Center the menu vertically
-        start_y = len(WILDCAT_ASCII.split("\n")) + 4
-
-        for idx, option in enumerate(menu_options):
-            x = (width // 2) - (len(option) // 2)
-            y = start_y + idx
-
-            if idx == current_row:
-                stdscr.attron(curses.color_pair(1))
-                stdscr.addstr(y, x, option)
-                stdscr.attroff(curses.color_pair(1))
-            else:
-                stdscr.addstr(y, x, option)
-
-        stdscr.refresh()
-
-        key = stdscr.getch()
-        
-        if key == curses.KEY_UP and current_row > 0:
-            current_row -= 1
-        elif key == curses.KEY_DOWN and current_row < len(menu_options) - 1:
-            current_row += 1
-        elif key == curses.KEY_RESIZE:
-            # Handle window resizing by redrawing
-            stdscr.clear()
-        elif key in [curses.KEY_ENTER, 10, 13]:  # Enter key pressed
-            if handle_selection(stdscr, current_row, menu_options, height, width):
-                return
-        elif key == curses.KEY_MOUSE:
-            try:
-                _, mouse_x, mouse_y, _, _ = curses.getmouse()
-                # Check if the mouse click is within the menu options
-                for idx, option in enumerate(menu_options):
-                    x = (width // 2) - (len(option) // 2)
-                    y = start_y + idx
-                    if y == mouse_y and x <= mouse_x < x + len(option):
-                        current_row = idx
-                        if handle_selection(stdscr, current_row, menu_options, height, width):
-                            return
-            except curses.error:
-                pass
                 
 def handle_selection(stdscr, current_row, menu_options, height, width):
     """Handle the selection of a menu option"""
+    if current_row < 0 or current_row >= len(menu_options):
+        return False  # Invalid selection
+    
     selection = menu_options[current_row]
     
-    if selection == "Exit":
+    if selection == "EXIT":
         return True # Exit the CLI
 
     try:
-        if selection == "Rename Plugin":
+        if selection == "RENAME PLUGIN":
             plugin.rename_project(stdscr)
-        elif selection == "Create Plugin":
+        elif selection == "CREATE PLUGIN":
             plugin.create_project(stdscr)
-        elif selection == "Init Repo":
+        elif selection == "INIT REPO":
             plugin.init_repo(stdscr)
-        elif selection == "Add Functionality Class":
+        elif selection == "ADD FUNCTIONALITY CLASS":
             functionality.add_functionality(stdscr)
-        elif selection == "Add Component Class":
+        elif selection == "ADD COMPONENT CLASS":
             component.add_component(stdscr)
-        elif selection == "Add Entity Class":
+        elif selection == "ADD ENTITY CLASS":
             entity.add_entity(stdscr)
-        elif selection == "Install PHP Dependency":
+        elif selection == "INSTALL PHP DEPENDENCY":
             php_dependency.dependency_menu(stdscr)
-        elif selection == "Install Node Dependency":
+        elif selection == "INSTALL NODE DEPENDENCY":
             node_dependency.dependency_menu(stdscr)
-        elif selection == "Add Element":
+        elif selection == "ADD ELEMENT":
             elements.add_element(stdscr)
-        elif selection == "Settings":
+        elif selection == "SETTINGS":
             settings.draw_settings_menu(stdscr)
         
         # Show success message
         stdscr.addstr(height - 4, (width // 2) - 10, "✅ Action Completed!", curses.color_pair(3))
-        stdscr.refresh()
-        time.sleep(1)
+        curses.doupdate()
+        # time.sleep(1)
 
     except Exception as e:
         stdscr.addstr(height - 4, (width // 2) - 15, f"❌ Error: {str(e)}", curses.color_pair(3))
-        stdscr.refresh()
-        time.sleep(2)
+        curses.doupdate()
+        # time.sleep(2)
     
     return False
         

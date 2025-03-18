@@ -1,100 +1,94 @@
 import os
 import curses
 from pathlib import Path
-from plubo.utils import project  # Import function to get the plugin name
+from plubo.utils import project, interface  # Import function to get the plugin name
 
 # Define the absolute path to the templates directory (sibling folder)
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
 # Functionality options and their respective PHP templates
 FUNCTIONALITY_OPTIONS = {
-    "Admin Menus": "Admin/AdminMenus.php",
-    "Ajax Actions": "AjaxActions.php",
-    "Api Endpoints": "ApiEndpoints.php",
-    "Cart": "Cart.php",
-    "Crons": "Crons.php",
-    "Custom Fields": "CustomFields.php",
-    "Orders": "Orders.php",
-    "Post Actions": "PostActions.php",
-    "Products": "Products.php",
-    "Roles": "Roles.php",
-    "Routes": "Routes.php",
-    "Shortcodes": "Shortcodes.php",
-    "Taxonomies": "Taxonomies.php",
-    "Users": "Users.php",
-    "Custom": "Functionality.php"  # Base template for user-defined classes
+    "ADMIN MENUS": "Admin/AdminMenus.php",
+    "AJAX ACTIONS": "AjaxActions.php",
+    "API ENDPOINTS": "ApiEndpoints.php",
+    "CART": "Cart.php",
+    "CRONS": "Crons.php",
+    "CUSTOM FIELDS": "CustomFields.php",
+    "ORDERS": "Orders.php",
+    "POST ACTIONS": "PostActions.php",
+    "PRODUCTS": "Products.php",
+    "ROLES": "Roles.php",
+    "ROUTES": "Routes.php",
+    "SHORTCODES": "Shortcodes.php",
+    "TAXONOMIES": "Taxonomies.php",
+    "USERS": "Users.php",
+    "CUSTOM": "Functionality.php",  # Base template for user-defined classes
+    "RETURN TO MAIN MENU": "None"
 }
+
+def handle_selection(stdscr, current_row, menu_options, height, width):
+    """Handle the selection of a menu option"""
+    if current_row < 0 or current_row >= len(menu_options):
+        return False  # Invalid selection
+    
+    selection = menu_options[current_row]
+    
+    if selection == "RETURN TO MAIN MENU":
+        return True # Exit the CLI
+    
+    if selection == "Custom":
+        curses.curs_set(1)  # Show cursor for input
+        stdscr.clear()
+        stdscr.addstr(2, 2, "Custom Functionality Name:")
+        stdscr.refresh()
+
+        curses.echo()
+        stdscr.move(4, 2)
+        curses.flushinp()
+        custom_name = stdscr.getstr().decode("utf-8").strip()
+        curses.noecho()
+        curses.curs_set(0)  # Hide cursor
+
+        if not custom_name:
+            stdscr.addstr(8, 2, "⚠️ Functionality creation cancelled.")
+            stdscr.refresh()
+            stdscr.getch()
+            return
+
+        success, message = create_functionality(custom_name, "Functionality.php")
+    else:
+        success, message = create_functionality(selection, FUNCTIONALITY_OPTIONS[selection])
+
+    stdscr.clear()
+    if success:
+        stdscr.addstr(4, 2, f"✅ {message}")
+    else:
+        stdscr.addstr(4, 2, f"❌ {message}")
+
+    stdscr.addstr(8, 2, "Press any key to return to the main menu.")
+    stdscr.refresh()
+    stdscr.getch()
 
 def add_functionality(stdscr):
     """Displays a menu to select a functionality type and creates the corresponding PHP file."""
-    curses.curs_set(0)  # Hide cursor
-    curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # Message color
 
     stdscr.nodelay(0)
     stdscr.clear()
     stdscr.addstr(2, 2, "🔧 Add Functionality")
     stdscr.refresh()
 
-    options = list(FUNCTIONALITY_OPTIONS.keys())
+    menu_options = list(FUNCTIONALITY_OPTIONS.keys())
     current_row = 0
+    
+    height, width = stdscr.getmaxyx()
 
     while True:
-        stdscr.clear()
-        stdscr.addstr(2, 2, "🔧 Select a Functionality Type:")
-        
-        for idx, option in enumerate(options):
-            x = 4
-            y = 4 + idx
-            if idx == current_row:
-                stdscr.attron(curses.color_pair(3))
-                stdscr.addstr(y, x, option)
-                stdscr.attroff(curses.color_pair(3))
-            else:
-                stdscr.addstr(y, x, option)
+        selected_row, current_row = interface.render_menu(stdscr, menu_options, current_row, height, width)
+        if selected_row is not None:
+            if handle_selection(stdscr, selected_row, menu_options, height, width):
+                return # Exit the CLI if handle_selection returns True
 
-        stdscr.refresh()
-        key = stdscr.getch()
-
-        if key == curses.KEY_UP and current_row > 0:
-            current_row -= 1
-        elif key == curses.KEY_DOWN and current_row < len(options) - 1:
-            current_row += 1
-        elif key in [curses.KEY_ENTER, 10, 13]:  # Enter key pressed
-            selection = options[current_row]
-
-            if selection == "Custom":
-                curses.curs_set(1)  # Show cursor for input
-                stdscr.clear()
-                stdscr.addstr(2, 2, "Enter Custom Functionality Name:")
-                stdscr.refresh()
-
-                curses.echo()
-                stdscr.move(4, 2)
-                curses.flushinp()
-                custom_name = stdscr.getstr().decode("utf-8").strip()
-                curses.noecho()
-
-                if not custom_name:
-                    stdscr.addstr(8, 2, "⚠️ Functionality creation cancelled.")
-                    stdscr.refresh()
-                    stdscr.getch()
-                    curses.curs_set(0)  # Hide cursor
-                    return
-
-                success, message = create_functionality(custom_name, "Functionality.php")
-            else:
-                success, message = create_functionality(selection, FUNCTIONALITY_OPTIONS[selection])
-
-            stdscr.clear()
-            if success:
-                stdscr.addstr(4, 2, f"✅ {message}")
-            else:
-                stdscr.addstr(4, 2, f"❌ {message}")
-
-            stdscr.addstr(8, 2, "Press any key to return to the main menu.")
-            stdscr.refresh()
-            stdscr.getch()
-            curses.curs_set(0)  # Hide cursor
+            
 
 
 def create_functionality(name, template_filename):

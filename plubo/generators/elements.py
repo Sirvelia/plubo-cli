@@ -7,7 +7,6 @@ from plubo.generators import functionality
 def add_element(stdscr):
     """Displays a menu to select an entity type and prompts for details."""
     curses.curs_set(0)  # Hide cursor
-    curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     
     stdscr.nodelay(0)
     stdscr.clear()

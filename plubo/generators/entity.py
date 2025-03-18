@@ -9,14 +9,13 @@ TEMPLATES_DIR = Path(__file__).parent.parent / "templates"  # Move up one level 
 def add_entity(stdscr):
     """Main function to handle entity creation within the curses menu."""
     curses.curs_set(1)  # Show cursor for input
-    curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # Message color
 
     stdscr.nodelay(0)
     stdscr.clear()
     stdscr.addstr(2, 2, "🔄 Add Entity")
     stdscr.refresh()
 
-    stdscr.addstr(6, 2, "Enter a Entity name (leave empty to cancel):")
+    stdscr.addstr(6, 2, "Entity name (leave empty to cancel):")
     stdscr.refresh()
 
     # Ensure proper user input handling

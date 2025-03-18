@@ -1,5 +1,6 @@
 import os
 import json
+import requests
 
 CONFIG_FILE = os.path.expanduser("~/.pb_cli_config.json")
 

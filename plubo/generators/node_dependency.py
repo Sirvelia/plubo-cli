@@ -6,6 +6,7 @@ DEPENDENCY_OPTIONS = {
     "AlpineJS": "alpinejs @types/alpinejs",
     "TailwindCSS": "tailwindcss",
     "DaisyUI": "daisyui@latest",
+    "Hikeflow": "hikeflow",
     "Back to Main Menu": None  # Special case, no package to install
 }
 
@@ -45,9 +46,6 @@ def dependency_menu(stdscr):
     stdscr.nodelay(0)
     stdscr.timeout(100)
     curses.mousemask(1)  # Enable mouse support
-
-    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)  # Highlight color
-    curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # Message color
 
     current_row = 0
     options = list(DEPENDENCY_OPTIONS.keys())  # Get option names

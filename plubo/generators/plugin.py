@@ -4,94 +4,22 @@ import subprocess
 import curses
 import requests
 from pathlib import Path
-from plubo.utils import project
+from plubo.utils import project, interface
 from plubo.settings.Config import Config
+from plubo.git.github import ask_for_github_namespace, create_github_repo
+from plubo.git.gitlab import ask_for_gitlab_namespace, create_gitlab_repo, get_custom_gitlab_domains
+from plubo.git.git_utils import initialize_git_repository, set_remote_and_push
 
-def fetch_gitlab_groups(token, gitlab_domain="gitlab.com"):
-    """Fetch the GitLab groups of the authenticated user."""
-    url = f"https://{gitlab_domain}/api/v4/groups"
-    headers = {"PRIVATE-TOKEN": token}
+def handle_repo_selection(stdscr, current_row, menu_options, plugin_directory, plugin_name, custom_domains):
+    """Handle the selection of a menu option"""
+    if current_row < 0 or current_row >= len(menu_options):
+        return False  # Invalid selection
     
-    try:
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            print(response.json())
-            return response.json()  # List of groups
-        else:
-            print("ERROR")
-            return []
-    except Exception as e:
-        return []
+    if current_row == len(menu_options) - 1:  # "Skip"
+        return True
 
-def ask_for_gitlab_namespace(stdscr, token, username, gitlab_domain="gitlab.com"):
-    """Ask the user to select a GitLab namespace (personal or group)."""
-    groups = fetch_gitlab_groups(token, gitlab_domain)
-
-    # Create options list with namespace name and ID (Personal account has no ID)
-    options = [{"name": f"Personal ({username})", "full_path": username, "id": None}]
-    options.extend([{"name": group["full_path"], "full_path": group["full_path"], "id": group["id"]} for group in groups])
-    
-    selected = 0
-
-    while True:
-        stdscr.clear()
-        stdscr.addstr(2, 2, "📂 Select GitLab Namespace")
-        
-        for i, option in enumerate(options):
-            if i == selected:
-                stdscr.addstr(4 + i, 4, f"> {option['name']} <", curses.A_BOLD)
-            else:
-                stdscr.addstr(4 + i, 4, option['name'])
-        
-        key = stdscr.getch()
-        if key == curses.KEY_UP and selected > 0:
-            selected -= 1
-        elif key == curses.KEY_DOWN and selected < len(options) - 1:
-            selected += 1
-        elif key in (curses.KEY_ENTER, 10, 13):
-            break
-
-    # Return both namespace and its ID (None for personal)
-    return options[selected]["full_path"], options[selected]["id"]
-
-def get_custom_gitlab_domains():
-    """Retrieve custom GitLab domains stored in Config."""
-    all_sections = Config.sections()
-    return [key for key in all_sections if "." in key]  # Domains usually contain a dot
-
-
-def ask_for_repo_creation(stdscr, plugin_directory, plugin_name):
-    """Ask the user if they want to create a repo on GitHub, GitLab, or a custom domain."""
-    custom_domains = get_custom_gitlab_domains()
-    options = ["GitHub", "GitLab"] + custom_domains + ["Skip"]
-    
-    selected = 0
-    
-    while True:
-        stdscr.clear()
-        stdscr.addstr(2, 2, "📂 Create Git Repository")
-        
-        for i, option in enumerate(options):
-            if i == selected:
-                stdscr.addstr(4 + i, 4, f"> {option} <", curses.A_BOLD)
-            else:
-                stdscr.addstr(4 + i, 4, option)
-        
-        key = stdscr.getch()
-        if key == curses.KEY_UP and selected > 0:
-            selected -= 1
-        elif key == curses.KEY_DOWN and selected < len(options) - 1:
-            selected += 1
-        elif key in (curses.KEY_ENTER, 10, 13):
-            break
-    
-    if selected == len(options) - 1:  # "Skip"
-        return 
-    
-    platform = options[selected]
-    stdscr.clear()
-    
     # Retrieve credentials from Config
+    platform = menu_options[current_row]
     username = Config.get(platform.lower(), "username")
     token = Config.get(platform.lower(), "token")
 
@@ -113,10 +41,10 @@ def ask_for_repo_creation(stdscr, plugin_directory, plugin_name):
         else:
             repo_namespace, namespace_id = ask_for_gitlab_namespace(stdscr, token, username, platform)
     else:
-        repo_namespace = Config.get(platform.lower(), "repo_namespace", default=username)
+        repo_namespace = ask_for_github_namespace(stdscr, token, username)
     
         curses.echo()
-        stdscr.addstr(6, 2, f"📂 Enter your repository namespace [{repo_namespace}]:")
+        stdscr.addstr(6, 2, f"📂 Repository namespace [{repo_namespace}]:")
         stdscr.refresh()
         stdscr.move(8, 2)
         namespace_input = stdscr.getstr().decode("utf-8").strip()
@@ -138,81 +66,49 @@ def ask_for_repo_creation(stdscr, plugin_directory, plugin_name):
 
     if remote_url:
         stdscr.addstr(12, 2, f"✅ Repository created: {remote_url}")
+        
     stdscr.addstr(14, 2, "Press any key to return to the main menu.")
     stdscr.refresh()
     stdscr.getch()
-
-
-def create_github_repo(username, token, plugin_name, org_name=None):
-    """Create a new GitHub repository under a user or organization."""
-    if org_name:
-        url = f"https://api.github.com/orgs/{org_name}/repos"  # Create repo in org
-    else:
-        url = "https://api.github.com/user/repos"  # Create repo in user namespace
-
-    headers = {
-        "Authorization": f"token {token}",
-        "Accept": "application/vnd.github.v3+json"
-    }
     
-    data = {"name": plugin_name, "private": True}
-
-    response = requests.post(url, headers=headers, json=data)
-    if response.status_code == 201:
-        repo_owner = org_name if org_name else username
-        return f"git@github.com:{repo_owner}/{plugin_name}.git"
-    else:
-        raise Exception(f"GitHub repo creation failed: {response.json()}")
-
-def create_gitlab_repo(namespace, namespace_id, token, plugin_name, gitlab_domain="gitlab.com"):
-    """Create a new GitLab repository under the selected namespace (group or personal)."""
-    url = f"https://{gitlab_domain}/api/v4/projects"
-    headers = {"PRIVATE-TOKEN": token}
     
-    data = {"name": plugin_name, "visibility": "public"}
+def ask_for_repo_creation(stdscr, plugin_directory, plugin_name):
+    """Ask the user if they want to create a repo on GitHub, GitLab, or a custom domain."""
+    custom_domains = get_custom_gitlab_domains()
+    menu_options = ["GitHub", "GitLab"] + custom_domains + ["RETURN"]
     
-    if namespace_id:  # Only send if it's a group
-        data["namespace_id"] = namespace_id
-
-    response = requests.post(url, headers=headers, json=data)
+    current_row = 0
+    height, width = stdscr.getmaxyx()
+    while True:
+        selected_row, current_row = interface.render_menu(stdscr, menu_options, current_row, height, width)
+        if selected_row is not None:
+            if handle_repo_selection(stdscr, selected_row, menu_options, plugin_directory, plugin_name, custom_domains):
+                return # Exit the CLI if handle_selection returns True
     
-    if response.status_code == 201:
-        return f"git@{gitlab_domain}:{namespace}/{plugin_name}.git"
-    else:
-        raise Exception(f"GitLab repo creation failed: {response.json()}")
-
 
 def setup_git_repository(stdscr, plugin_directory, plugin_name, platform, username, repo_namespace, namespace_id, access_token):
     """Initialize Git repository, create a remote repository via API, and push to the selected platform using SSH."""
     stdscr.clear()
     stdscr.addstr(2, 2, "🛠️ Setting up Git repository...")
     stdscr.refresh()
-    os.chdir(plugin_directory)
     
-    subprocess.run(["git", "init"], check=True)
-    subprocess.run(["git", "add", "-A"], check=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], check=True)
     
     try:
+        initialize_git_repository(plugin_directory)
+        
         if platform == "GitHub":
-            # Determine if namespace is an organization
-            if repo_namespace != username:
-                remote_url = create_github_repo(username, access_token, plugin_name, repo_namespace)
-            else:
-                remote_url = create_github_repo(username, access_token, plugin_name)
+            remote_url = create_github_repo(username, access_token, plugin_name, repo_namespace)
         elif platform == "GitLab":
             remote_url = create_gitlab_repo(repo_namespace, namespace_id, access_token, plugin_name)
         else:
-            remote_url = create_gitlab_repo(repo_namespace, namespace_id, access_token, plugin_name, "gitlab.sirvelia.com")
+            remote_url = create_gitlab_repo(repo_namespace, namespace_id, access_token, plugin_name, platform)
+        
+        set_remote_and_push(remote_url, plugin_directory)
     except Exception as e:
         stdscr.addstr(6, 2, f"❌ Error creating repository: {e}")
         stdscr.refresh()
         stdscr.getch()
         return None
-    
-    subprocess.run(["git", "remote", "add", "origin", remote_url], check=True)
-    subprocess.run(["git", "branch", "-M", "main"], check=True)
-    subprocess.run(["git", "push", "-u", "origin", "main"], check=True)
     
     return remote_url
 
@@ -226,29 +122,36 @@ def create_project(stdscr):
         return
     
     curses.curs_set(1)  # Show cursor for input
-    curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # Message color
     
     stdscr.nodelay(0)
     stdscr.clear()
+    
     stdscr.addstr(2, 2, "➕ Create Plugin")
+    # stdscr.refresh()
+    
+    label = "Plugin name (empty to cancel):"
+    stdscr.addstr(6, 2, label)
     stdscr.refresh()
     
-    stdscr.addstr(6, 2, "Enter the new plugin name (leave empty to cancel):")
-    stdscr.refresh()
+    # Calculate position for right-aligned input based on text length
+    input_x = min(len(label) + 5, curses.COLS - 20)  # Ensures space after text
     
     # Ensure proper user input handling
     curses.echo()
-    stdscr.move(8, 2)
+    stdscr.move(6, input_x)  # Move cursor to the right for input
+    stdscr.attron(curses.color_pair(3))
     curses.flushinp()
     new_name = stdscr.getstr().decode("utf-8").strip()
+    stdscr.attroff(curses.color_pair(3))
     curses.noecho()
+    
+    curses.curs_set(0)  # Hide cursor
     
     # If the user presses enter without input, do nothing
     if not new_name:
         stdscr.addstr(10, 2, "⚠️ Creation cancelled. Press any key to return.")
         stdscr.refresh()
         stdscr.getch()
-        curses.curs_set(0)  # Hide cursor
         return
     
     stdscr.clear()
@@ -267,7 +170,6 @@ def create_project(stdscr):
 def rename_project(stdscr):
     """Main function to handle renaming within the curses menu."""
     curses.curs_set(1)  # Show cursor for input
-    curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # Message color
     
     stdscr.nodelay(0)
     stdscr.clear()
@@ -277,7 +179,7 @@ def rename_project(stdscr):
     old_name = project.detect_plugin_name()
     stdscr.addstr(6, 2, f"Current plugin name detected: ")
     stdscr.addstr(old_name, curses.color_pair(3))
-    stdscr.addstr(8, 2, "Enter a new plugin name (leave empty to cancel):")
+    stdscr.addstr(8, 2, "Plugin name (empty to cancel):")
     stdscr.refresh()
     
     # Ensure proper user input handling
