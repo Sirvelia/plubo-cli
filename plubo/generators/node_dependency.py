@@ -7,7 +7,7 @@ DEPENDENCY_OPTIONS = {
     "TailwindCSS": "tailwindcss",
     "DaisyUI": "daisyui@latest",
     "Hikeflow": "hikeflow",
-    "Back to Main Menu": None  # Special case, no package to install
+    "RETURN": None  # Special case, no package to install
 }
 
 WILDCAT_ASCII = r"""
@@ -80,7 +80,7 @@ def dependency_menu(stdscr):
             selection = options[current_row]
             package_name = DEPENDENCY_OPTIONS[selection]
 
-            if selection == "Back to Main Menu":
+            if selection == "RETURN":
                 break  # Return to the main menu
 
             install_dependency(stdscr, package_name)
@@ -95,7 +95,7 @@ def dependency_menu(stdscr):
                         current_row = idx
                         package_name = DEPENDENCY_OPTIONS[options[current_row]]
 
-                        if options[current_row] == "Back to Main Menu":
+                        if options[current_row] == "RETURN":
                             return  # Exit
 
                         install_dependency(stdscr, package_name)

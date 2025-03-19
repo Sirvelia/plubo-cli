@@ -117,7 +117,12 @@ def render_menu(stdscr, menu_options, current_row, height, width):
         return current_row, current_row
     elif key == curses.KEY_MOUSE:
         try:
-            _, mouse_x, mouse_y, _, _ = curses.getmouse()  
+            _, mouse_x, mouse_y, _, button_state = curses.getmouse()  
+            
+            # Ignore scroll events
+            if button_state & curses.BUTTON4_PRESSED or button_state & curses.BUTTON5_PRESSED:
+                return None, current_row  # Do nothing on scroll
+            
             for idx, option in enumerate(menu_options):
                 y = menu_y + 0 + idx  # Match menu item y-position
                 if mouse_y == y:
@@ -132,10 +137,10 @@ def draw_title(stdscr, title):
     height, width = stdscr.getmaxyx()
     stdscr.addstr(2, (width - len(title)) // 2, title, curses.color_pair(2) | curses.A_BOLD)
 
-def display_message(stdscr, message, msg_type="info"):
+def display_message(stdscr, message, msg_type="info", y=15, x=4):
     """Displays a status message with color based on type."""
     color_map = {"success": 1, "error": 4, "info": 2}
-    stdscr.addstr(15, 4, message, curses.color_pair(color_map.get(msg_type, 2)) | curses.A_BOLD)
+    stdscr.addstr(y, x, message, curses.color_pair(color_map.get(msg_type, 2)) | curses.A_BOLD)
     stdscr.refresh()
 
 
@@ -198,7 +203,7 @@ def get_user_input(stdscr, y, x, question, max_width, hidden=False):
         question_lines.append(current_line)
 
     input_str = ""
-    previous_box_height = 20
+    previous_box_height = 10
 
     while True:
         # Auto-wrap the input string into lines of length max_width

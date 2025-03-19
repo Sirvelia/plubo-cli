@@ -2,7 +2,8 @@ import subprocess
 import curses
 import json
 import os
-from plubo.utils import project
+import re
+from plubo.utils import project, interface
 
 DEPENDENCY_OPTIONS = {
     "Routes": "joanrodas/plubo-routes",
@@ -15,12 +16,74 @@ DEPENDENCY_OPTIONS = {
     "Back to Main Menu": None  # Special case, no package to install
 }
 
-# Wildcat ASCII Art
-WILDCAT_ASCII = r"""
-       /\_/\  
-      ( o.o )
-       > ^ <  
-"""
+# Define ANSI color mapping for curses
+ANSI_COLOR_MAP = {
+    '30': curses.COLOR_BLACK,   # Black
+    '31': curses.COLOR_RED,     # Red
+    '32': curses.COLOR_GREEN,   # Green
+    '33': curses.COLOR_YELLOW,  # Yellow
+    '34': curses.COLOR_BLUE,    # Blue
+    '35': curses.COLOR_MAGENTA, # Magenta
+    '36': curses.COLOR_CYAN,    # Cyan
+    '37': curses.COLOR_WHITE    # White
+}
+
+# Regex pattern to match ANSI escape sequences
+ANSI_PATTERN = re.compile(r'\x1B\[(\d+)m')
+
+def init_colors():
+    """Initialize color pairs for curses."""
+    curses.start_color()
+    pair_number = 10  # Start from 10 to avoid conflicts with system colors
+    
+    for ansi_code, color in ANSI_COLOR_MAP.items():
+        curses.init_pair(pair_number, color, curses.COLOR_BLACK)  # Foreground color
+        ANSI_COLOR_MAP[ansi_code] = curses.color_pair(pair_number)  # Store curses color pair
+        pair_number += 1
+
+def parse_ansi_colors(text):
+    """
+    Parses ANSI color sequences in a line and returns a list of (text_segment, curses_color_pair).
+    Handles multiple colors in a single line.
+    """
+    segments = []
+    last_color = curses.color_pair(17)  # Default color
+    parts = ANSI_PATTERN.split(text)
+
+    for part in parts:
+        if part.isdigit():  # If it's a color code
+            ansi_code = part
+            last_color = ANSI_COLOR_MAP.get(ansi_code, curses.color_pair(17))  # Get color pair
+        else:
+            if part:  # Non-empty text segment
+                segments.append((part, last_color))
+
+    return segments
+
+def wrap_text(segments, max_width):
+    """
+    Wraps long lines into multiple lines while preserving color.
+    Returns a list of (line_segments, color) tuples.
+    """
+    wrapped_lines = []
+    current_line = []
+    current_length = 0
+
+    for text, color in segments:
+        words = text.split(' ')
+        for word in words:
+            if current_length + len(word) + 1 > max_width:
+                wrapped_lines.append(current_line)  # Store the current line
+                current_line = []  # Start a new line
+                current_length = 0
+
+            current_line.append((word + ' ', color))
+            current_length += len(word) + 1
+
+    if current_line:
+        wrapped_lines.append(current_line)  # Append any remaining text
+
+    return wrapped_lines
 
 def get_installed_dependencies():
     """Read composer.json and return a dictionary of installed dependencies and versions."""
@@ -42,14 +105,13 @@ def install_dependency(stdscr, package_name):
         return  # Do nothing if the user selects "Back to Main Menu"
 
     stdscr.clear()
-    stdscr.addstr(1, 2, f"⏳ Installing {package_name}...", curses.A_BOLD)  # Display message
-    stdscr.refresh()
+    interface.draw_background(stdscr, f"⏳ Installing {package_name}...")
     
     height, width = stdscr.getmaxyx()
     box_height = height - 6  # Leave space for the message
-    box_width = width - 4
+    box_width = width - 8
     box_start_y = 3
-    box_start_x = 2
+    box_start_x = 4
 
     # Draw the bordered box for output
     output_win = curses.newwin(box_height, box_width, box_start_y, box_start_x)
@@ -63,17 +125,31 @@ def install_dependency(stdscr, package_name):
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
 
     line_y = 1  # First line inside the box
+    inner_width = box_width - 4
+    
     while True:
         line = process.stdout.readline()
         if not line and process.poll() is not None:
             break  # Exit loop if process is done and no more output
 
-        if line_y >= box_height - 2:  # Scroll if output exceeds window height
-            output_win.scroll()
-        else:
-            line_y += 1
+        # Parse ANSI color codes and split text into segments
+        segments = parse_ansi_colors(line.strip())
+        wrapped_lines = wrap_text(segments, inner_width)  # Wrap text if necessary
 
-        output_win.addstr(line_y, 2, line.strip())  # Display new line inside box
+        for wrapped_line in wrapped_lines:
+            if line_y >= box_height - 2:  # Scroll if output exceeds window height
+                output_win.scroll()
+            else:
+                line_y += 1
+
+            # **Fix 1: Clear the entire line before writing to prevent artifacts**
+            output_win.addstr(line_y, 1, " " * (inner_width + 2), curses.color_pair(10))
+
+            col_x = 2  # Starting position for text inside the box
+            for segment_text, color_pair in wrapped_line:
+                output_win.addstr(line_y, col_x, segment_text, color_pair)
+                col_x += len(segment_text)
+        
         output_win.border()  # Keep the border visible
         output_win.refresh()
 
@@ -83,115 +159,46 @@ def install_dependency(stdscr, package_name):
     success = process.returncode == 0
     message = f"✅ Successfully installed {package_name}" if success else f"❌ Installation failed for {package_name}"
     
-    stdscr.addstr(height - 3, 2, message, curses.color_pair(3))
-    stdscr.addstr(height - 2, 2, "[Press any key to return]", curses.A_BOLD)
+    stdscr.addstr(height - 3, 4, message, curses.color_pair(3))
+    # stdscr.addstr(height - 2, 2, "[Press any key to return]", curses.A_BOLD)
     stdscr.refresh()
 
     # **Wait for user input before returning**
-    stdscr.nodelay(False)  # Set to blocking mode
+    # stdscr.nodelay(False)  # Set to blocking mode
     stdscr.getch()  # Wait user input
 
 def dependency_menu(stdscr):
     """Display the dependency installation submenu with a background title."""
-    curses.curs_set(0)  # Hide cursor
-    stdscr.nodelay(0)
-    stdscr.timeout(100)
-    curses.mousemask(1)  # Enable mouse support
+    curses.curs_set(0)  # Hide cursor   
+    stdscr.keypad(True)
     
-    installed_dependencies = get_installed_dependencies()
-
+    init_colors()
+    
     current_row = 0
-    options = list(DEPENDENCY_OPTIONS.keys())  # Get option names
+    height, width = stdscr.getmaxyx()
 
     while True:
-        stdscr.clear()
-        draw_background_with_title(
-            stdscr,
-            "WELCOME TO PLUBO-CLI!",  # Title
-            "Plugin: new-plugiiin",   # Subtitle
-            6,  # Title color (cyan)
-            3   # Subtitle color (yellow)
-        )
+        installed_dependencies = get_installed_dependencies()
+        menu_options = []
+        original_names = []  # To map displayed names back to actual options
 
-        height, width = stdscr.getmaxyx()
-        start_y = len(WILDCAT_ASCII.split("\n")) + 5  # Adjust menu position below the wildcat
-
-        for idx, option in enumerate(options):
-            x = 10
-            y = start_y + idx
-            
-            package_name = DEPENDENCY_OPTIONS[option]
+        for option, package_name in DEPENDENCY_OPTIONS.items():
             checkmark = ""
             version_info = ""
 
             if package_name and package_name in installed_dependencies:
                 checkmark = "✅"
-                version_info = f"--> Current version: {installed_dependencies[package_name]}"
-
+                version_info = f"--> {installed_dependencies[package_name]}"
+            
             display_text = f"{checkmark} {option} {version_info}".strip()
-
-            if idx == current_row:
-                stdscr.attron(curses.color_pair(1))
-                stdscr.addstr(y, x, display_text)
-                stdscr.attroff(curses.color_pair(1))
-            else:
-                stdscr.addstr(y, x, display_text)
-
-        stdscr.refresh()
-
-        key = stdscr.getch()
+            menu_options.append(display_text)
+            original_names.append(option)  # Keep track of original option names
+            
+        selected_row, current_row = interface.render_menu(stdscr, menu_options, current_row, height, width)
         
-        if key == curses.KEY_UP and current_row > 0:
-            current_row -= 1
-        elif key == curses.KEY_DOWN and current_row < len(options) - 1:
-            current_row += 1
-        elif key in [curses.KEY_ENTER, 10, 13]:  # Enter key pressed
-            selection = options[current_row]
-            package_name = DEPENDENCY_OPTIONS[selection]
-
-            if selection == "Back to Main Menu":
-                break  # Return to the main menu
-
-            install_dependency(stdscr, package_name)
-        
-        elif key == curses.KEY_MOUSE:
-            try:
-                _, mouse_x, mouse_y, _, _ = curses.getmouse()
-                for idx, option in enumerate(options):
-                    x = 10
-                    y = start_y + idx
-                    if y == mouse_y and x <= mouse_x < x + len(option):
-                        current_row = idx
-                        package_name = DEPENDENCY_OPTIONS[options[current_row]]
-
-                        if options[current_row] == "Back to Main Menu":
-                            return  # Exit
-
-                        install_dependency(stdscr, package_name)
-                        break
-            except curses.error:
-                pass
-
-
-def draw_background_with_title(stdscr, title, subtitle, title_color, subtitle_color):
-    """Draws the wildcat ASCII on the left and the title & subtitle aligned to its right."""
-    stdscr.clear()
-
-    height, width = stdscr.getmaxyx()
-
-    # Align the title & subtitle
-    title_x = 2
-    title_y = 2
-
-    subtitle_x = title_x  # Subtitle aligned with title
-    subtitle_y = title_y + 1  # Right below the title
-
-    # Print title & subtitle
-    stdscr.addstr(title_y, title_x, title, curses.color_pair(title_color) | curses.A_BOLD)
-    stdscr.addstr(subtitle_y, subtitle_x, subtitle, curses.color_pair(subtitle_color))
-
-    # Display the version at the bottom
-    version_text = "plubo-cli v0.1"
-    stdscr.addstr(height - 2, (width - len(version_text)) // 2, version_text, curses.color_pair(3))
-
-    # stdscr.refresh()
+        if selected_row is not None:
+            selected_option = original_names[selected_row]
+            package_name = DEPENDENCY_OPTIONS[selected_option]
+            if package_name is not None:
+                install_dependency(stdscr, package_name)
+            return

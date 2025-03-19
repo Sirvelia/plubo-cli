@@ -60,12 +60,14 @@ def menu(stdscr):
         curses.init_pair(2, 4, curses.COLOR_WHITE)  # Highlighted Option
         curses.init_pair(3, 3, curses.COLOR_WHITE)  # Titles & Borders
         curses.init_pair(4, curses.COLOR_RED, curses.COLOR_WHITE)  # Error messages
+        curses.init_pair(5, 1, 2)  # Terminal
 
     else:
         curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_WHITE)  # Normal text
         curses.init_pair(2, curses.COLOR_BLUE, curses.COLOR_WHITE)  # Highlighted text
         curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)  # Titles & Borders
         curses.init_pair(4, curses.COLOR_RED, curses.COLOR_WHITE)  # Error messages
+        curses.init_pair(5, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Terminal
             
     
     # Enable mouse events

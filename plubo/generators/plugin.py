@@ -169,44 +169,24 @@ def create_project(stdscr):
 
 def rename_project(stdscr):
     """Main function to handle renaming within the curses menu."""
-    curses.curs_set(1)  # Show cursor for input
-    
     stdscr.nodelay(0)
-    stdscr.clear()
-    stdscr.addstr(2, 2, "🔄 Rename Plugin")
-    stdscr.refresh()
+    interface.draw_background(stdscr, "🔄 Rename Plugin")
+    
+    
+    box_x = (stdscr.getmaxyx()[1] - 50) // 2  # Center box horizontally
+    y_start = 8  # Position inputs inside the box
     
     old_name = project.detect_plugin_name()
-    stdscr.addstr(6, 2, f"Current plugin name detected: ")
-    stdscr.addstr(old_name, curses.color_pair(3))
-    stdscr.addstr(8, 2, "Plugin name (empty to cancel):")
-    stdscr.refresh()
+    new_name = interface.get_user_input(stdscr, y_start, box_x, "Plugin name (empty to cancel):", 40)
     
-    # Ensure proper user input handling
-    curses.echo()
-    stdscr.move(10, 2)
-    curses.flushinp()
-    new_name = stdscr.getstr().decode("utf-8").strip()
-    curses.noecho()
-    
-    # If the user presses enter without input, do nothing
     if not new_name:
-        stdscr.addstr(12, 2, "⚠️ Rename cancelled. Press any key to return.")
-        stdscr.refresh()
-        stdscr.getch()
-        curses.curs_set(0)  # Hide cursor
-        return
+        interface.display_message(stdscr, "⚠️ Rename cancelled.", "error", 15)
+    else:
+        interface.display_message(stdscr, f"Renaming {old_name} to {new_name}... ⏳", "info", 15)
+        rename_plugin(old_name, new_name)
+        interface.display_message(stdscr, "✅ Plugin renamed successfully!", "success", 16)
     
-    stdscr.clear()
-    stdscr.addstr(2, 2, f"Renaming {old_name} to {new_name}... ⏳")
-    stdscr.refresh()
-    rename_plugin(old_name, new_name)
-    
-    stdscr.addstr(4, 2, "✅ Plugin renamed successfully!")
-    stdscr.addstr(6, 2, "Press any key to return to the main menu.")
-    stdscr.refresh()
-    stdscr.getch()
-    curses.curs_set(0)  # Hide cursor
+    stdscr.getch()  # Wait for user input before returning
 
 def init_repo(stdscr):
     """Init repo for the plugin."""
@@ -300,8 +280,6 @@ def rename_plugin(old_name, new_name):
         plugin_root.rename(new_plugin_folder)
     
     #TODO: MAYBE COMPILE assets AND activate plugin if lando is present
-    
-    return new_plugin_folder
 
 def replace_in_file(file_path, replacements):
     """Replaces occurrences of old names with new ones in a file."""
