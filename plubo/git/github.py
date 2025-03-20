@@ -41,7 +41,7 @@ def ask_for_github_namespace(stdscr, token, username):
     while True:
         selected_row, current_row = interface.render_menu(stdscr, option_names, current_row, height, width)
         if selected_row == len(options) - 1:  # "Skip"
-            return 
+            return False
     
         if selected_row is not None:
             return options[selected_row]["full_path"]

@@ -2,9 +2,8 @@ import os
 import json
 import subprocess
 import curses
-import requests
 from pathlib import Path
-from plubo.utils import project, interface
+from plubo.utils import project, interface, colors
 from plubo.settings.Config import Config
 from plubo.git.github import ask_for_github_namespace, create_github_repo
 from plubo.git.gitlab import ask_for_gitlab_namespace, create_gitlab_repo, get_custom_gitlab_domains
@@ -23,43 +22,33 @@ def handle_repo_selection(stdscr, current_row, menu_options, plugin_directory, p
     username = Config.get(platform.lower(), "username")
     token = Config.get(platform.lower(), "token")
 
-    # Ask for username only if missing
-    if not username:
-        curses.echo()
-        stdscr.addstr(2, 2, f"👤 Enter your {platform} username:")
-        stdscr.refresh()
-        stdscr.move(4, 2)
-        username = stdscr.getstr().decode("utf-8").strip()
-        curses.noecho()
-        Config.set(platform.lower(), "username", username)  # Save for future use
-
-    # Ask for repo namespace (default to username)
-    namespace_id = None
-    if platform in ["GITLAB"] + custom_domains:
-        if platform == "GITHUB":
-            repo_namespace, namespace_id = ask_for_gitlab_namespace(stdscr, token, username)
-        else:
-            repo_namespace, namespace_id = ask_for_gitlab_namespace(stdscr, token, username, platform)
-    else:
-        repo_namespace = ask_for_github_namespace(stdscr, token, username)
-    
-        curses.echo()
-        stdscr.addstr(6, 2, f"📂 Repository namespace [{repo_namespace}]:")
-        stdscr.refresh()
-        stdscr.move(8, 2)
-        namespace_input = stdscr.getstr().decode("utf-8").strip()
-        curses.noecho()
-        
-        if namespace_input:
-            repo_namespace = namespace_input
-            Config.set(platform.lower(), "repo_namespace", repo_namespace)
-
     # Skip token prompt and use stored token
     if not token:
         stdscr.addstr(10, 2, f"❌ No {platform} token found in config. Please set it using pb-cli settings.")
         stdscr.refresh()
         stdscr.getch()
         return
+    
+    # Ask for username only if missing
+    if not username:
+        stdscr.addstr(10, 2, f"❌ No {platform} username found in config. Please set it using pb-cli settings.")
+        stdscr.refresh()
+        stdscr.getch()
+        return
+
+    # Ask for repo namespace (default to username)
+    namespace_id = None
+    if platform in ["GITLAB"] + custom_domains:
+        if platform == "GITLAB":
+            repo_namespace, namespace_id = ask_for_gitlab_namespace(stdscr, token, username)
+        else:
+            repo_namespace, namespace_id = ask_for_gitlab_namespace(stdscr, token, username, platform)
+    else:
+        repo_namespace = ask_for_github_namespace(stdscr, token, username)
+    
+    if not repo_namespace:
+        return False
+
 
     # Proceed with repo creation
     remote_url = setup_git_repository(stdscr, plugin_directory, plugin_name, platform, username, repo_namespace, namespace_id, token)
@@ -130,9 +119,7 @@ def create_project(stdscr):
     if not new_name:
         interface.display_message(stdscr, "⚠️ Creation cancelled.", "error", 15)
     else:
-        interface.display_message(stdscr, f"Creating plugin {new_name}... ⏳", "info", 15)
-        create_plugin(new_name, wp_root)
-        interface.display_message(stdscr, "✅ Plugin created successfully!", "success", 16)
+        create_plugin(stdscr, new_name, wp_root)
     
     stdscr.getch()  # Wait for user input before returning
 
@@ -160,18 +147,12 @@ def init_repo(stdscr):
     """Init repo for the plugin."""
     wp_root = project.detect_wp_root()
     if not wp_root:
-        stdscr.addstr(4, 2, "❌ No WordPress installation detected. Aborting.")
-        stdscr.refresh()
-        stdscr.getch()
-        curses.curs_set(0)  # Hide cursor
+        interface.display_message(stdscr, "❌ No WordPress installation detected. Aborting.", "error", 15)
         return
     
     plugin_name = project.detect_plugin_name()
     if not plugin_name:
-        stdscr.addstr(4, 2, "❌ No plugin detected. Aborting.")
-        stdscr.refresh()
-        stdscr.getch()
-        curses.curs_set(0)  # Hide cursor
+        interface.display_message(stdscr, "❌ No plugin detected. Aborting.", "error", 15)
         return
     
     plugin_name = plugin_name.lower().replace(" ", "-")
@@ -179,33 +160,44 @@ def init_repo(stdscr):
     plugin_directory = plugins_directory / plugin_name
     
     ask_for_repo_creation(stdscr, plugin_directory, plugin_name)
-    curses.curs_set(0)  # Hide cursor
-        
-def create_plugin(new_name, wp_root):
-    """Create the new plugin using Plubo Boilerplate."""
+
+def create_plugin(stdscr, new_name, wp_root):
+    """Install a specific Composer dependency, handling Lando projects."""
+    if not new_name or not wp_root:
+        return  # Do nothing
+
     plugin_name = new_name.lower().replace(" ", "-")
     plugins_directory = wp_root / "wp-content/plugins"
     plugin_directory = plugins_directory / plugin_name
+
+    stdscr.clear()
+    interface.draw_background(stdscr, f"⏳ Creating plugin {plugin_name}...")
     
-    curses.endwin()  # Exit curses mode so the user can interact normally
-    print(f"\n⏳ Creating plugin {new_name} in {plugin_directory}...\n")  # Inform user
-    
+    height, width = stdscr.getmaxyx()
+
     try:       
         command = ["lando", "composer", "create-project", "joanrodas/plubo", plugin_name] if project.is_lando_project() else ["composer", "create-project", "joanrodas/plubo", plugin_name]
-        subprocess.run(command, check=True, cwd=str(plugins_directory))
         
-        os.chdir(plugin_directory)  # Change directory to the newly created plugin folder
-        rename_plugin("plugin-placeholder", new_name)
+        if project.run_command(command, plugins_directory, stdscr):
+            interface.display_message(stdscr, f"✅ Successfully created {plugin_name}", "success", height - 3)
+            os.chdir(plugin_directory)  # Change directory to the newly created plugin folder
+            rename_plugin("plugin-placeholder", new_name)
+            stdscr.clear()
+            activate_plugin(stdscr, plugin_name, plugin_directory)
+            ask_for_repo_creation(stdscr, plugin_directory, plugin_name)
+        else:
+            interface.display_message(stdscr, f"❌ Creation failed for {plugin_name}", "error", height - 3)
         
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Error during plugin creation: {e}")
     
     except Exception as e:
         print(f"❌ Unexpected error: {e}")
+
     
-    finally:
-        stdscr = curses.initscr()
-        ask_for_repo_creation(stdscr, plugin_directory, plugin_name)
+    stdscr.refresh()
+
+    # **Wait for user input before returning**
+    stdscr.getch()  # Wait user input
+            
 
 def rename_plugin(old_name, new_name):
     """Replaces the plugin name in all relevant files with correct casing."""
@@ -280,3 +272,42 @@ def replace_in_json(file_path, replacements):
     
     with file_path.open("w", encoding="utf-8") as f:
         json.dump(updated_data, f, indent=4)
+
+
+def activate_plugin(stdscr, plugin_name, plugin_directory):
+    """Runs composer update, yarn build, and activates the plugin."""
+    
+    stdscr.clear()
+    interface.draw_background(stdscr, f"🚀 Activating Plugin: {plugin_name}")
+    
+    height, width = stdscr.getmaxyx()
+    
+    commands = [
+        (["lando", "composer", "update"] if project.is_lando_project() else ["composer", "update"], "Updating Composer dependencies"),
+        (["yarn"], "Installing Node.js dependencies"),
+        (["yarn", "build"], "Building assets")
+    ]
+
+    for cmd, description in commands:
+        interface.display_message(stdscr, f"🔄 {description}...", "info", 2)
+        if not project.run_command(cmd, plugin_directory, stdscr):
+            interface.display_message(stdscr, f"❌ Failed: {description}", "error", height - 3)
+            stdscr.getch()
+            return
+
+    if project.is_wp_cli_available():
+        activation_command = ["wp", "plugin", "activate", plugin_name]
+    elif project.is_lando_project():
+        activation_command = ["lando", "wp", "plugin", "activate", plugin_name]
+    else:
+        interface.display_message(stdscr, "❌ No WP-CLI available. Plugin not activated.", "error", height - 3)
+        stdscr.getch()
+        return
+
+    interface.display_message(stdscr, "🔄 Activating Plugin...", "info", 2)
+    if project.run_command(activation_command, plugin_directory, stdscr):
+        interface.display_message(stdscr, f"✅ Plugin '{plugin_name}' activated successfully!", "success", height - 3)
+    else:
+        interface.display_message(stdscr, f"❌ Plugin activation failed!", "error", height - 3)
+
+    stdscr.getch()

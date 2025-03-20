@@ -1,6 +1,7 @@
 import requests
 import curses
 from plubo.settings.Config import Config
+from plubo.utils import interface
 
 def validate_gitlab_token(token, gitlab_domain="gitlab.com"):
     """Check if GitLab token is valid before storing it."""
@@ -21,10 +22,8 @@ def fetch_gitlab_groups(token, gitlab_domain="gitlab.com"):
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
-            print(response.json())
             return response.json()  # List of groups
         else:
-            print("ERROR")
             return []
     except Exception as e:
         return []
@@ -37,31 +36,18 @@ def ask_for_gitlab_namespace(stdscr, token, username, gitlab_domain="gitlab.com"
     options = [{"name": f"Personal ({username})", "full_path": username, "id": None}]
     options.extend([{"name": group["full_path"], "full_path": group["full_path"], "id": group["id"]} for group in groups])
     
-    selected = 0
-
-    while True:
-        stdscr.clear()
-        stdscr.addstr(2, 2, "📂 Select GitLab Namespace")
-        
-        for i, option in enumerate(options):
-            if i == selected:
-                stdscr.addstr(4 + i, 4, f"> {option['name']} <", curses.A_BOLD)
-            else:
-                stdscr.addstr(4 + i, 4, option['name'])
-        
-        key = stdscr.getch()
-        if key == curses.KEY_UP and selected > 0:
-            selected -= 1
-        elif key == curses.KEY_DOWN and selected < len(options) - 1:
-            selected += 1
-        elif key in (curses.KEY_ENTER, 10, 13):
-            break
+    option_names = [opt["name"] for opt in options]  # Extract only names
+    option_names.append("BACK")
     
-    # if selected == len(options) - 1:  # "Skip"
-    #     return 
-
-    # Return both namespace and its ID (None for personal)
-    return options[selected]["full_path"], options[selected]["id"]
+    current_row = 0
+    height, width = stdscr.getmaxyx()
+    while True:
+        selected_row, current_row = interface.render_menu(stdscr, option_names, current_row, height, width)
+        if selected_row == len(options) - 1:  # "Skip"
+            return False
+    
+        if selected_row is not None:
+            return options[selected_row]["full_path"]
 
 def get_custom_gitlab_domains():
     """Retrieve custom GitLab domains stored in Config."""
