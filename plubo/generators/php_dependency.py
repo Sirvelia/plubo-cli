@@ -2,88 +2,19 @@ import subprocess
 import curses
 import json
 import os
-import re
-from plubo.utils import project, interface
+from plubo.utils import project, interface, colors
 
 DEPENDENCY_OPTIONS = {
-    "Routes": "joanrodas/plubo-routes",
-    "Roles": "joanrodas/plubo-roles",
-    "Logs": "sirvelia-labs/plubo-logs",
-    "Checks": "sirvelia-labs/plubo-checks",
-    "Jwt": "sirvelia/plubo-jwt",
-    "Carbon Fields": "htmlburger/carbon-fields",
-    "Action Scheduler": "woocommerce/action-scheduler",
-    "Back to Main Menu": None  # Special case, no package to install
+    "ROUTES": "joanrodas/plubo-routes",
+    "ROLES": "joanrodas/plubo-roles",
+    "LOGS": "sirvelia-labs/plubo-logs",
+    "CHECKS": "sirvelia-labs/plubo-checks",
+    "JWT": "sirvelia/plubo-jwt",
+    "CARBON FIELDS": "htmlburger/carbon-fields",
+    "ACTION SCHEDULER": "woocommerce/action-scheduler",
+    "CUSTOM CODE FIELDS": "joanrodas/custom-code-fields",
+    "RETURN": None  # Special case, no package to install
 }
-
-# Define ANSI color mapping for curses
-ANSI_COLOR_MAP = {
-    '30': curses.COLOR_BLACK,   # Black
-    '31': curses.COLOR_RED,     # Red
-    '32': curses.COLOR_GREEN,   # Green
-    '33': curses.COLOR_YELLOW,  # Yellow
-    '34': curses.COLOR_BLUE,    # Blue
-    '35': curses.COLOR_MAGENTA, # Magenta
-    '36': curses.COLOR_CYAN,    # Cyan
-    '37': curses.COLOR_WHITE    # White
-}
-
-# Regex pattern to match ANSI escape sequences
-ANSI_PATTERN = re.compile(r'\x1B\[(\d+)m')
-
-def init_colors():
-    """Initialize color pairs for curses."""
-    curses.start_color()
-    pair_number = 10  # Start from 10 to avoid conflicts with system colors
-    
-    for ansi_code, color in ANSI_COLOR_MAP.items():
-        curses.init_pair(pair_number, color, curses.COLOR_BLACK)  # Foreground color
-        ANSI_COLOR_MAP[ansi_code] = curses.color_pair(pair_number)  # Store curses color pair
-        pair_number += 1
-
-def parse_ansi_colors(text):
-    """
-    Parses ANSI color sequences in a line and returns a list of (text_segment, curses_color_pair).
-    Handles multiple colors in a single line.
-    """
-    segments = []
-    last_color = curses.color_pair(17)  # Default color
-    parts = ANSI_PATTERN.split(text)
-
-    for part in parts:
-        if part.isdigit():  # If it's a color code
-            ansi_code = part
-            last_color = ANSI_COLOR_MAP.get(ansi_code, curses.color_pair(17))  # Get color pair
-        else:
-            if part:  # Non-empty text segment
-                segments.append((part, last_color))
-
-    return segments
-
-def wrap_text(segments, max_width):
-    """
-    Wraps long lines into multiple lines while preserving color.
-    Returns a list of (line_segments, color) tuples.
-    """
-    wrapped_lines = []
-    current_line = []
-    current_length = 0
-
-    for text, color in segments:
-        words = text.split(' ')
-        for word in words:
-            if current_length + len(word) + 1 > max_width:
-                wrapped_lines.append(current_line)  # Store the current line
-                current_line = []  # Start a new line
-                current_length = 0
-
-            current_line.append((word + ' ', color))
-            current_length += len(word) + 1
-
-    if current_line:
-        wrapped_lines.append(current_line)  # Append any remaining text
-
-    return wrapped_lines
 
 def get_installed_dependencies():
     """Read composer.json and return a dictionary of installed dependencies and versions."""
@@ -98,6 +29,19 @@ def get_installed_dependencies():
             return composer_data.get("require", {})  # Get dependencies from require section
     except (json.JSONDecodeError, FileNotFoundError):
         return {}
+
+def get_latest_version(package_name):
+    """Retrieve the latest available version of a Composer package."""
+    try:
+        command = ["lando", "composer", "show", "--all", package_name] if project.is_lando_project() else ["composer", "show", "--all", package_name]
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        
+        for line in result.stdout.split("\n"):
+            if line.startswith("versions :"):
+                versions = line.split(":")[1].strip().split(", ")
+                return versions[-1]  # Latest version is usually the last in the list
+    except subprocess.CalledProcessError:
+        return None  # Error occurred
 
 def install_dependency(stdscr, package_name):
     """Install a specific Composer dependency, handling Lando projects."""
@@ -133,8 +77,8 @@ def install_dependency(stdscr, package_name):
             break  # Exit loop if process is done and no more output
 
         # Parse ANSI color codes and split text into segments
-        segments = parse_ansi_colors(line.strip())
-        wrapped_lines = wrap_text(segments, inner_width)  # Wrap text if necessary
+        segments = colors.parse_ansi_colors(line.strip())
+        wrapped_lines = colors.wrap_text(segments, inner_width)  # Wrap text if necessary
 
         for wrapped_line in wrapped_lines:
             if line_y >= box_height - 2:  # Scroll if output exceeds window height
@@ -160,20 +104,16 @@ def install_dependency(stdscr, package_name):
     message = f"✅ Successfully installed {package_name}" if success else f"❌ Installation failed for {package_name}"
     
     stdscr.addstr(height - 3, 4, message, curses.color_pair(3))
-    # stdscr.addstr(height - 2, 2, "[Press any key to return]", curses.A_BOLD)
     stdscr.refresh()
 
     # **Wait for user input before returning**
-    # stdscr.nodelay(False)  # Set to blocking mode
     stdscr.getch()  # Wait user input
 
 def dependency_menu(stdscr):
     """Display the dependency installation submenu with a background title."""
     curses.curs_set(0)  # Hide cursor   
     stdscr.keypad(True)
-    
-    init_colors()
-    
+        
     current_row = 0
     height, width = stdscr.getmaxyx()
 
@@ -188,7 +128,7 @@ def dependency_menu(stdscr):
 
             if package_name and package_name in installed_dependencies:
                 checkmark = "✅"
-                version_info = f"--> {installed_dependencies[package_name]}"
+                version_info = f" {installed_dependencies[package_name]}"
             
             display_text = f"{checkmark} {option} {version_info}".strip()
             menu_options.append(display_text)

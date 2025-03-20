@@ -1,5 +1,5 @@
 import curses
-import time
+import textwrap
 from plubo.utils import project
 
 # PB-CLI Game Boy ASCII Art
@@ -15,10 +15,10 @@ def draw_background(stdscr, title=None):
     height, width = stdscr.getmaxyx()
 
     # Outer Border
-    stdscr.addstr(1, 1, "╔" + "═" * (width - 4) + "╗", curses.color_pair(3))
+    stdscr.addstr(1, 2, " " + " " * (width - 6) + " ", curses.color_pair(3))
     for y in range(2, height - 2):
-        stdscr.addstr(y, 1, "║" + " " * (width - 4) + "║", curses.color_pair(3))
-    stdscr.addstr(height - 2, 1, "╚" + "═" * (width - 4) + "╝", curses.color_pair(3))
+        stdscr.addstr(y, 2, " " + " " * (width - 6) + " ", curses.color_pair(3))
+    stdscr.addstr(height - 2, 2, " " + " " * (width - 6) + " ", curses.color_pair(3))
 
     # ASCII Art Title (If Available)
     if title:
@@ -50,31 +50,39 @@ def draw_background(stdscr, title=None):
     stdscr.refresh()
     
 def render_menu(stdscr, menu_options, current_row, height, width):
+    max_visible_options = min(11, len(menu_options))  # Maximum options displayed before scrolling
+    menu_start = max(0, current_row - max_visible_options + 1) if current_row >= max_visible_options else 0
+    initial_menu_start = menu_start
+
     # Calculate menu width based on the longest option
     menu_width = max(len(option) for option in menu_options) + 6
     menu_x = (width - menu_width) // 2  # Center the menu
     menu_y = 8
     
     # Outer Border
-    stdscr.addstr(1, 2, "╔" + "═" * (width - 6) + "╗", curses.color_pair(3))
+    # stdscr.addstr(1, 2, "╔" + "═" * (width - 6) + "╗", curses.color_pair(3))
+    # for y in range(2, height - 2):
+    #     stdscr.addstr(y, 2, "║" + " " * (width - 6) + "║", curses.color_pair(3))
+    # stdscr.addstr(height - 2, 2, "╚" + "═" * (width - 6) + "╝", curses.color_pair(3))
+    
+    stdscr.addstr(1, 2, " " + " " * (width - 6) + " ", curses.color_pair(3))
     for y in range(2, height - 2):
-        stdscr.addstr(y, 2, "║" + " " * (width - 6) + "║", curses.color_pair(3))
-    stdscr.addstr(height - 2, 2, "╚" + "═" * (width - 6) + "╝", curses.color_pair(3))
+        stdscr.addstr(y, 2, " " + " " * (width - 6) + " ", curses.color_pair(3))
+    stdscr.addstr(height - 2, 2, " " + " " * (width - 6) + " ", curses.color_pair(3))
 
     # TITLE
     for i, line in enumerate(PB_CLI_ASCII):
-        stdscr.addstr(2 + i, (width // 2) - (len(line) // 2), line, curses.color_pair(3) | curses.A_BOLD)
+        stdscr.addstr(2 + i, (width // 2) - (len(line) // 2), line, curses.color_pair(4) | curses.A_BOLD)
     
     # Plugin name display
     plugin_name = project.detect_plugin_name()
     if plugin_name:
         plugin_text = f"Plugin: {plugin_name}"
         stdscr.addstr(5, (width - len(plugin_text)) // 2, plugin_text, curses.color_pair(3) | curses.A_DIM)
-    
     else:
         wp_root = project.detect_wp_root()
         if not wp_root:
-            wp_text = f"No WordPress installation found!"
+            wp_text = "No WordPress installation found!"
             stdscr.addstr(5, (width - len(wp_text)) // 2, wp_text, curses.color_pair(3) | curses.A_DIM)
         else:
             wp_text = f"WP: {wp_root}"
@@ -82,16 +90,18 @@ def render_menu(stdscr, menu_options, current_row, height, width):
 
     # Inner Box for Menu
     stdscr.addstr(menu_y - 1, menu_x, "╔" + "═" * (menu_width - 2) + "╗", curses.color_pair(3))
-    for y in range(len(menu_options) + 0):
+    for y in range(max_visible_options):
         stdscr.addstr(menu_y + y, menu_x, "║" + " " * (menu_width - 2) + "║", curses.color_pair(3))
-    stdscr.addstr(menu_y + len(menu_options) + 0, menu_x, "╚" + "═" * (menu_width - 2) + "╝", curses.color_pair(3))
+    stdscr.addstr(menu_y + max_visible_options, menu_x, "╚" + "═" * (menu_width - 2) + "╝", curses.color_pair(3))
 
-    # Display menu options
-    for idx, option in enumerate(menu_options):
+    # Display menu options with scrolling
+    visible_options = menu_options[menu_start:menu_start + max_visible_options]
+
+    for idx, option in enumerate(visible_options):
+        y = menu_y + idx
         x = menu_x + 4  
-        y = menu_y + idx  
 
-        if idx == current_row:
+        if (menu_start + idx) == current_row:
             stdscr.attron(curses.color_pair(2))
             stdscr.addstr(y, x - 2, "▶ ")  
             stdscr.addstr(y, x, option)
@@ -103,34 +113,61 @@ def render_menu(stdscr, menu_options, current_row, height, width):
     version_text = "plubo-cli v0.1"
     stdscr.addstr(height - 3, (width - len(version_text)) // 2, version_text, curses.color_pair(3))
 
-
     stdscr.refresh()
     key = stdscr.getch()
     
-    if key == curses.KEY_UP and current_row > 0:
-        current_row -= 1
-    elif key == curses.KEY_DOWN and current_row < len(menu_options) - 1:
-        current_row += 1
+    if key == curses.KEY_UP:
+        if current_row > 0:
+            current_row -= 1
+            if current_row < menu_start:  # Scroll up
+                menu_start -= 1
+        else:
+            current_row = len(menu_options) - 1
+            menu_start = max(0, len(menu_options) - max_visible_options)
+    elif key == curses.KEY_DOWN:
+        if current_row < len(menu_options) - 1:
+            current_row += 1
+            if current_row >= menu_start + max_visible_options:  # Scroll down
+                menu_start += 1
+        else:
+            current_row = 0
+            menu_start = initial_menu_start
     elif key == curses.KEY_RESIZE:
         return None, current_row
     elif key in [curses.KEY_ENTER, 10, 13]:  # Enter key pressed
         return current_row, current_row
+    elif key in [curses.KEY_BACKSPACE, 10, 13]:  # Enter key pressed
+        return len(menu_options) - 1, len(menu_options) - 1
     elif key == curses.KEY_MOUSE:
         try:
             _, mouse_x, mouse_y, _, button_state = curses.getmouse()  
             
-            # Ignore scroll events
-            if button_state & curses.BUTTON4_PRESSED or button_state & curses.BUTTON5_PRESSED:
-                return None, current_row  # Do nothing on scroll
-            
-            for idx, option in enumerate(menu_options):
-                y = menu_y + 0 + idx  # Match menu item y-position
+            # Scroll Up
+            if button_state & curses.BUTTON4_PRESSED:
+                if current_row > 0:
+                    current_row -= 1
+                    if current_row < menu_start:
+                        menu_start -= 1
+                return None, current_row
+
+            # Scroll Down
+            if button_state & curses.BUTTON5_PRESSED:
+                if current_row < len(menu_options) - 1:
+                    current_row += 1
+                    if current_row >= menu_start + max_visible_options:
+                        menu_start += 1
+                return None, current_row
+
+            # Handle Mouse Click
+            for idx, option in enumerate(visible_options):
+                y = menu_y + idx  # Match menu item y-position
                 if mouse_y == y:
-                    return idx, current_row
+                    return menu_start + idx, current_row
         except curses.error:
             pass
     
     return None, current_row
+
 
 def draw_title(stdscr, title):
     """Draws a centered title for settings pages."""
@@ -138,9 +175,16 @@ def draw_title(stdscr, title):
     stdscr.addstr(2, (width - len(title)) // 2, title, curses.color_pair(2) | curses.A_BOLD)
 
 def display_message(stdscr, message, msg_type="info", y=15, x=4):
-    """Displays a status message with color based on type."""
+    """Displays a status message with color based on type, handling line wrapping."""
     color_map = {"success": 1, "error": 4, "info": 2}
-    stdscr.addstr(y, x, message, curses.color_pair(color_map.get(msg_type, 2)) | curses.A_BOLD)
+    max_y, max_x = stdscr.getmaxyx()  # Get terminal size
+    max_width = max_x - x - 1  # Leave space for margins
+
+    wrapped_lines = textwrap.wrap(message, width=max_width)
+
+    for i, line in enumerate(wrapped_lines):
+        stdscr.addstr(y + i, x, line, curses.color_pair(color_map.get(msg_type, 2)) | curses.A_BOLD)
+
     stdscr.refresh()
 
 

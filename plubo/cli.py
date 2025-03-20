@@ -2,7 +2,7 @@ import curses
 import sys
 import time
 from plubo.generators import functionality, component, entity, elements, php_dependency, node_dependency, plugin
-from plubo.utils import project, interface
+from plubo.utils import project, interface, colors
 from plubo.settings import settings
 
 MENU_OPTIONS_ALL = [
@@ -48,27 +48,7 @@ def menu(stdscr):
     curses.curs_set(0)  # Hide cursor
     stdscr.keypad(True)
 
-    curses.start_color()
-    # Check if terminal supports custom colors
-    if curses.can_change_color():
-        curses.init_color(1, 15 * 4, 56 * 4, 15 * 4)  # Dark Green (Text)
-        curses.init_color(2, 155 * 4, 188 * 4, 15 * 4)  # Light Green (Background)
-        curses.init_color(3, 48 * 4, 98 * 4, 48 * 4)  # Medium Green (Borders)
-
-        # Set color pairs
-        curses.init_pair(1, 1, curses.COLOR_WHITE)  # Normal Text (Dark Green on Light Green)
-        curses.init_pair(2, 4, curses.COLOR_WHITE)  # Highlighted Option
-        curses.init_pair(3, 3, curses.COLOR_WHITE)  # Titles & Borders
-        curses.init_pair(4, curses.COLOR_RED, curses.COLOR_WHITE)  # Error messages
-        curses.init_pair(5, 1, 2)  # Terminal
-
-    else:
-        curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_WHITE)  # Normal text
-        curses.init_pair(2, curses.COLOR_BLUE, curses.COLOR_WHITE)  # Highlighted text
-        curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)  # Titles & Borders
-        curses.init_pair(4, curses.COLOR_RED, curses.COLOR_WHITE)  # Error messages
-        curses.init_pair(5, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Terminal
-            
+    colors.init_colors()            
     
     # Enable mouse events
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)

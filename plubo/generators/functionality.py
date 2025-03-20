@@ -1,6 +1,6 @@
 import os
-import curses
 from pathlib import Path
+import curses
 from plubo.utils import project, interface  # Import function to get the plugin name
 
 # Define the absolute path to the templates directory (sibling folder)
@@ -23,7 +23,7 @@ FUNCTIONALITY_OPTIONS = {
     "TAXONOMIES": "Taxonomies.php",
     "USERS": "Users.php",
     "CUSTOM": "Functionality.php",  # Base template for user-defined classes
-    "RETURN TO MAIN MENU": "None"
+    "BACK": None
 }
 
 def handle_selection(stdscr, current_row, menu_options, height, width):
@@ -33,50 +33,42 @@ def handle_selection(stdscr, current_row, menu_options, height, width):
     
     selection = menu_options[current_row]
     
-    if selection == "RETURN TO MAIN MENU":
+    if selection == "BACK":
         return True # Exit the CLI
     
-    if selection == "Custom":
-        curses.curs_set(1)  # Show cursor for input
-        stdscr.clear()
-        stdscr.addstr(2, 2, "Custom Functionality Name:")
-        stdscr.refresh()
-
-        curses.echo()
-        stdscr.move(4, 2)
-        curses.flushinp()
-        custom_name = stdscr.getstr().decode("utf-8").strip()
-        curses.noecho()
-        curses.curs_set(0)  # Hide cursor
-
+    stdscr.erase()
+    interface.draw_background(stdscr, "🔧 Add Functionality")
+    
+    box_x = (stdscr.getmaxyx()[1] - 50) // 2  # Center box horizontally
+    y_start = 8  # Position inputs inside the box
+    
+    if selection == "CUSTOM":
+        custom_name = interface.get_user_input(stdscr, y_start, box_x, "Functionality name (empty to cancel):", 40)
+    
         if not custom_name:
-            stdscr.addstr(8, 2, "⚠️ Functionality creation cancelled.")
-            stdscr.refresh()
-            stdscr.getch()
-            return
-
-        success, message = create_functionality(custom_name, "Functionality.php")
+            interface.display_message(stdscr, "⚠️ Creation cancelled.", "error", 15)
+        else:
+            interface.display_message(stdscr, f"Creating functionality {custom_name}... ⏳", "info", 15)
+            creation, message = create_functionality(custom_name, "Functionality.php")
+            if creation:
+                interface.display_message(stdscr, message, "success", 16)
+            else:
+                interface.display_message(stdscr, message, "error", 16)
     else:
-        success, message = create_functionality(selection, FUNCTIONALITY_OPTIONS[selection])
-
-    stdscr.clear()
-    if success:
-        stdscr.addstr(4, 2, f"✅ {message}")
-    else:
-        stdscr.addstr(4, 2, f"❌ {message}")
-
-    stdscr.addstr(8, 2, "Press any key to return to the main menu.")
-    stdscr.refresh()
+        interface.display_message(stdscr, f"Creating functionality {selection}... ⏳", "info", 15)
+        creation, message = create_functionality(selection, FUNCTIONALITY_OPTIONS[selection])
+        if creation:
+            interface.display_message(stdscr, message, "success", 16)
+        else:
+            interface.display_message(stdscr, message, "error", 16)
+    
     stdscr.getch()
 
 def add_functionality(stdscr):
     """Displays a menu to select a functionality type and creates the corresponding PHP file."""
-
-    stdscr.nodelay(0)
-    stdscr.clear()
-    stdscr.addstr(2, 2, "🔧 Add Functionality")
-    stdscr.refresh()
-
+    curses.curs_set(0)  # Hide cursor   
+    stdscr.keypad(True)
+    
     menu_options = list(FUNCTIONALITY_OPTIONS.keys())
     current_row = 0
     
@@ -87,7 +79,6 @@ def add_functionality(stdscr):
         if selected_row is not None:
             if handle_selection(stdscr, selected_row, menu_options, height, width):
                 return # Exit the CLI if handle_selection returns True
-
             
 
 

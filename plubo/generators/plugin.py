@@ -35,8 +35,8 @@ def handle_repo_selection(stdscr, current_row, menu_options, plugin_directory, p
 
     # Ask for repo namespace (default to username)
     namespace_id = None
-    if platform in ["GitLab"] + custom_domains:
-        if platform == "GitLab":
+    if platform in ["GITLAB"] + custom_domains:
+        if platform == "GITHUB":
             repo_namespace, namespace_id = ask_for_gitlab_namespace(stdscr, token, username)
         else:
             repo_namespace, namespace_id = ask_for_gitlab_namespace(stdscr, token, username, platform)
@@ -75,7 +75,7 @@ def handle_repo_selection(stdscr, current_row, menu_options, plugin_directory, p
 def ask_for_repo_creation(stdscr, plugin_directory, plugin_name):
     """Ask the user if they want to create a repo on GitHub, GitLab, or a custom domain."""
     custom_domains = get_custom_gitlab_domains()
-    menu_options = ["GitHub", "GitLab"] + custom_domains + ["RETURN"]
+    menu_options = ["GITHUB", "GITLAB"] + custom_domains + ["RETURN"]
     
     current_row = 0
     height, width = stdscr.getmaxyx()
@@ -92,13 +92,12 @@ def setup_git_repository(stdscr, plugin_directory, plugin_name, platform, userna
     stdscr.addstr(2, 2, "🛠️ Setting up Git repository...")
     stdscr.refresh()
     
-    
     try:
         initialize_git_repository(plugin_directory)
         
-        if platform == "GitHub":
+        if platform == "GITHUB":
             remote_url = create_github_repo(username, access_token, plugin_name, repo_namespace)
-        elif platform == "GitLab":
+        elif platform == "GITLAB":
             remote_url = create_gitlab_repo(repo_namespace, namespace_id, access_token, plugin_name)
         else:
             remote_url = create_gitlab_repo(repo_namespace, namespace_id, access_token, plugin_name, platform)
@@ -114,64 +113,33 @@ def setup_git_repository(stdscr, plugin_directory, plugin_name, platform, userna
 
 def create_project(stdscr):
     """Main function to handle renaming within the curses menu."""
+    stdscr.nodelay(0)
+    interface.draw_background(stdscr, "➕ Create Plugin")
+    
     wp_root = project.detect_wp_root()
     if not wp_root:
-        stdscr.addstr(4, 2, "❌ No WordPress installation detected. Aborting.")
-        stdscr.refresh()
+        interface.display_message(stdscr, "⚠️ No WordPress installation detected. Aborting.", "error", 4)
         stdscr.getch()
         return
     
-    curses.curs_set(1)  # Show cursor for input
+    box_x = (stdscr.getmaxyx()[1] - 50) // 2  # Center box horizontally
+    y_start = 8  # Position inputs inside the box
     
-    stdscr.nodelay(0)
-    stdscr.clear()
+    new_name = interface.get_user_input(stdscr, y_start, box_x, "Plugin name (empty to cancel):", 40)
     
-    stdscr.addstr(2, 2, "➕ Create Plugin")
-    # stdscr.refresh()
-    
-    label = "Plugin name (empty to cancel):"
-    stdscr.addstr(6, 2, label)
-    stdscr.refresh()
-    
-    # Calculate position for right-aligned input based on text length
-    input_x = min(len(label) + 5, curses.COLS - 20)  # Ensures space after text
-    
-    # Ensure proper user input handling
-    curses.echo()
-    stdscr.move(6, input_x)  # Move cursor to the right for input
-    stdscr.attron(curses.color_pair(3))
-    curses.flushinp()
-    new_name = stdscr.getstr().decode("utf-8").strip()
-    stdscr.attroff(curses.color_pair(3))
-    curses.noecho()
-    
-    curses.curs_set(0)  # Hide cursor
-    
-    # If the user presses enter without input, do nothing
     if not new_name:
-        stdscr.addstr(10, 2, "⚠️ Creation cancelled. Press any key to return.")
-        stdscr.refresh()
-        stdscr.getch()
-        return
+        interface.display_message(stdscr, "⚠️ Creation cancelled.", "error", 15)
+    else:
+        interface.display_message(stdscr, f"Creating plugin {new_name}... ⏳", "info", 15)
+        create_plugin(new_name, wp_root)
+        interface.display_message(stdscr, "✅ Plugin created successfully!", "success", 16)
     
-    stdscr.clear()
-    stdscr.addstr(2, 2, f"Creating plugin {new_name}... ⏳")
-    stdscr.refresh()
-    create_plugin(new_name, wp_root)
-    stdscr.clear()
-    stdscr.refresh()
-    
-    stdscr.addstr(4, 2, "✅ Plugin created successfully!")
-    stdscr.addstr(6, 2, "Press any key to return to the main menu.")
-    stdscr.refresh()
-    stdscr.getch()
-    curses.curs_set(0)  # Hide cursor
+    stdscr.getch()  # Wait for user input before returning
 
 def rename_project(stdscr):
     """Main function to handle renaming within the curses menu."""
     stdscr.nodelay(0)
     interface.draw_background(stdscr, "🔄 Rename Plugin")
-    
     
     box_x = (stdscr.getmaxyx()[1] - 50) // 2  # Center box horizontally
     y_start = 8  # Position inputs inside the box

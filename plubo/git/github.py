@@ -1,5 +1,6 @@
 import requests
 import curses
+from plubo.utils import interface
 
 def validate_github_token(token):
     """Check if GitHub token is valid before storing it."""
@@ -31,31 +32,19 @@ def ask_for_github_namespace(stdscr, token, username):
     # Create options list with personal namespace first
     options = [{"name": f"Personal ({username})", "full_path": username}]
     options.extend([{"name": org["login"], "full_path": org["login"]} for org in orgs])
-
-    selected = 0
-
-    while True:
-        stdscr.clear()
-        stdscr.addstr(2, 2, "📂 Select GitHub Namespace")
-        
-        for i, option in enumerate(options):
-            if i == selected:
-                stdscr.addstr(4 + i, 4, f"> {option['name']} <", curses.A_BOLD)
-            else:
-                stdscr.addstr(4 + i, 4, option['name'])
-        
-        key = stdscr.getch()
-        if key == curses.KEY_UP and selected > 0:
-            selected -= 1
-        elif key == curses.KEY_DOWN and selected < len(options) - 1:
-            selected += 1
-        elif key in (curses.KEY_ENTER, 10, 13):
-            break
     
-    # if selected == len(options) - 1:  # "Skip"
-    #     return 
+    option_names = [opt["name"] for opt in options]  # Extract only names
+    option_names.append("BACK")
 
-    return options[selected]["full_path"]
+    current_row = 0
+    height, width = stdscr.getmaxyx()
+    while True:
+        selected_row, current_row = interface.render_menu(stdscr, option_names, current_row, height, width)
+        if selected_row == len(options) - 1:  # "Skip"
+            return 
+    
+        if selected_row is not None:
+            return options[selected_row]["full_path"]
 
 def create_github_repo(username, token, plugin_name, org_name=None):
     """Create a new GitHub repository under a user or organization."""

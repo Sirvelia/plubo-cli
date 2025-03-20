@@ -1,52 +1,30 @@
 import os
-import curses
 from pathlib import Path
-from plubo.utils import project  # Import function to get the plugin name
+from plubo.utils import project, interface  # Import function to get the plugin name
 
 # Define the absolute path to the templates directory (sibling folder)
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"  # Move up one level to reach sibling
 
 def add_entity(stdscr):
     """Main function to handle entity creation within the curses menu."""
-    curses.curs_set(1)  # Show cursor for input
-
-    stdscr.nodelay(0)
-    stdscr.clear()
-    stdscr.addstr(2, 2, "🔄 Add Entity")
-    stdscr.refresh()
-
-    stdscr.addstr(6, 2, "Entity name (leave empty to cancel):")
-    stdscr.refresh()
-
-    # Ensure proper user input handling
-    curses.echo()
-    stdscr.move(8, 2)
-    curses.flushinp()
-    entity_name = stdscr.getstr(curses.color_pair(3)).decode("utf-8").strip()
-    curses.noecho()
-
-    # If the user presses enter without input, do nothing
+    stdscr.erase()
+    interface.draw_background(stdscr, "🔄 Add Entity")
+    
+    box_x = (stdscr.getmaxyx()[1] - 50) // 2  # Center box horizontally
+    y_start = 8  # Position inputs inside the box
+    
+    entity_name = interface.get_user_input(stdscr, y_start, box_x, "Entity name (empty to cancel):", 40)
+    
     if not entity_name:
-        stdscr.addstr(12, 2, "⚠️ Entity Creation cancelled. Press any key to return.")
-        stdscr.refresh()
-        stdscr.getch()
-        return
-
-    stdscr.clear()
-    stdscr.addstr(2, 2, f"Creating entity {entity_name}... ⏳")
-    stdscr.refresh()
-
-    success, message = create_entity(entity_name)
-
-    if success:
-        stdscr.addstr(4, 2, f"✅ {message}")
+        interface.display_message(stdscr, "⚠️ Creation cancelled.", "error", 15)
     else:
-        stdscr.addstr(4, 2, f"❌ {message}")
-
-    stdscr.addstr(8, 2, "Press any key to return to the main menu.")
-    stdscr.refresh()
-    stdscr.getch()
-    curses.curs_set(0)  # Hide cursor
+        interface.display_message(stdscr, f"Creating entity {entity_name}... ⏳", "info", 15)
+        creation, message = create_entity(entity_name)
+        if creation:
+            interface.display_message(stdscr, message, "success", 16)
+        else:
+            interface.display_message(stdscr, message, "error", 16)
+    stdscr.getch()  # Waits for a key press before returning
 
 
 def create_entity(entity_name):
@@ -84,4 +62,5 @@ def create_entity(entity_name):
 
     # Write the entity file
     entity_file.write_text(php_code, encoding="utf-8")
+    
     return True, f"Entity '{entity_class_name}' created successfully at {entity_file}"

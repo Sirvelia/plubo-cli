@@ -1,49 +1,46 @@
 import os
 import curses
 from pathlib import Path
-from plubo.utils import project
+from plubo.utils import project, interface
 from plubo.generators import functionality
 
+def handle_selection(stdscr, current_row, menu_options, height, width):
+    """Handle the selection of a menu option"""
+    if current_row < 0 or current_row >= len(menu_options):
+        return False  # Invalid selection
+    
+    selection = menu_options[current_row]
+    
+    if selection == "BACK":
+        return True
+    
+    stdscr.erase()
+    interface.draw_background(stdscr, "🔧 Add Element")           
+    
+    if selection == "ENDPOINT":
+        configure_endpoint(stdscr)
+    
+    stdscr.getch()
+    
 def add_element(stdscr):
     """Displays a menu to select an entity type and prompts for details."""
-    curses.curs_set(0)  # Hide cursor
+    curses.curs_set(0)  # Hide cursor   
+    stdscr.keypad(True)
     
-    stdscr.nodelay(0)
-    stdscr.clear()
-    stdscr.addstr(2, 2, "🔄 Add Entity")
-    stdscr.refresh()
-    
-    options = ["Shortcode", "Route", "Endpoint", "Role", "Custom Product", "Custom Post Type", "Taxonomy"]
+    menu_options = [
+        "ROUTE",
+        "ENDPOINT",
+        "BACK"
+    ]
     current_row = 0
     
+    height, width = stdscr.getmaxyx()
+
     while True:
-        stdscr.clear()
-        stdscr.addstr(2, 2, "🔄 Select an Entity Type:")
-        
-        for idx, option in enumerate(options):
-            x = 4
-            y = 4 + idx
-            if idx == current_row:
-                stdscr.attron(curses.color_pair(3))
-                stdscr.addstr(y, x, option)
-                stdscr.attroff(curses.color_pair(3))
-            else:
-                stdscr.addstr(y, x, option)
-        
-        stdscr.refresh()
-        key = stdscr.getch()
-        
-        if key == curses.KEY_UP and current_row > 0:
-            current_row -= 1
-        elif key == curses.KEY_DOWN and current_row < len(options) - 1:
-            current_row += 1
-        elif key in [curses.KEY_ENTER, 10, 13]:
-            selection = options[current_row]
-            if selection == "Endpoint":
-                configure_endpoint(stdscr)
-            break
-        
-    curses.curs_set(0)  # Hide cursor
+        selected_row, current_row = interface.render_menu(stdscr, menu_options, current_row, height, width)
+        if selected_row is not None:
+            if handle_selection(stdscr, selected_row, menu_options, height, width):
+                return # Exit the CLI if handle_selection returns True
 
 def configure_endpoint(stdscr):
     """Prompts the user to configure an endpoint."""

@@ -82,8 +82,8 @@ def add_custom_domain(stdscr):
     y_start = 10
 
     domain = interface.get_user_input(stdscr, y_start, box_x, "Enter your custom domain:", 40)
-    username = interface.get_user_input(stdscr, y_start + 4, box_x, "Enter your username:", 40)
-    token = interface.get_user_input(stdscr, y_start + 8, box_x, "Enter your token:", 40, hidden=True)
+    username = interface.get_user_input(stdscr, y_start, box_x, "Enter your username:", 40)
+    token = interface.get_user_input(stdscr, y_start, box_x, "Enter your token:", 40, hidden=True)
 
     try:
         if token and validate_gitlab_token(token, domain):
@@ -110,7 +110,7 @@ def modify_custom_domain(stdscr, domain):
     y_start = 10
 
     new_username = interface.get_user_input(stdscr, y_start, box_x, f"New username ({current_username}):", 40)
-    new_token = interface.get_user_input(stdscr, y_start + 4, box_x, "Enter your token:", 40, hidden=True)    
+    new_token = interface.get_user_input(stdscr, y_start, box_x, "Enter your token:", 40, hidden=True)    
         
     if new_token and validate_gitlab_token(new_token, domain):
         if new_username:
