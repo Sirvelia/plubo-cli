@@ -18,9 +18,10 @@ def fetch_gitlab_groups(token, gitlab_domain="gitlab.com"):
     """Fetch the GitLab groups of the authenticated user."""
     url = f"https://{gitlab_domain}/api/v4/groups"
     headers = {"PRIVATE-TOKEN": token}
+    params = {"per_page": 100}  # Max allowed per page
     
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, params=params)
         if response.status_code == 200:
             return response.json()  # List of groups
         else:

@@ -1,7 +1,7 @@
 import curses
 import sys
 import time
-from plubo.generators import functionality, component, entity, elements, php_dependency, node_dependency, plugin
+from plubo.generators import functionality, component, entity, elements, php_dependency, node_dependency, plugin, dependencies
 from plubo.utils import project, interface, colors
 from plubo.settings import settings
 
@@ -9,9 +9,10 @@ MENU_OPTIONS_ALL = [
     "ADD FUNCTIONALITY CLASS",
     "ADD COMPONENT CLASS",
     "ADD ENTITY CLASS",
+    "ADD ELEMENT",
     "INSTALL PHP DEPENDENCY",
     "INSTALL NODE DEPENDENCY",
-    "ADD ELEMENT",
+    "CHECK DEPENDENCIES",
     "CREATE PLUGIN",
     "INIT REPO",
     "RENAME PLUGIN",
@@ -103,6 +104,8 @@ def handle_selection(stdscr, current_row, menu_options, height, width):
             node_dependency.dependency_menu(stdscr)
         elif selection == "ADD ELEMENT":
             elements.add_element(stdscr)
+        elif selection == "CHECK DEPENDENCIES":
+            dependencies.dependency_checker(stdscr)
         elif selection == "SETTINGS":
             settings.draw_settings_menu(stdscr)
         
