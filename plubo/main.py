@@ -4,6 +4,7 @@ import time
 from plubo.generators import functionality, component, entity, elements, php_dependency, node_dependency, plugin, dependencies
 from plubo.utils import project, interface, colors
 from plubo.settings import settings
+from plubo.cli.dispatcher import dispatch
 
 MENU_OPTIONS_ALL = [
     "ADD FUNCTIONALITY CLASS",
@@ -16,6 +17,7 @@ MENU_OPTIONS_ALL = [
     "CREATE PLUGIN",
     "INIT REPO",
     "RENAME PLUGIN",
+    "PREPARE RELEASE",
     "SETTINGS",
     "EXIT"
 ]
@@ -106,6 +108,8 @@ def handle_selection(stdscr, current_row, menu_options, height, width):
             elements.add_element(stdscr)
         elif selection == "CHECK DEPENDENCIES":
             dependencies.dependency_checker(stdscr)
+        elif selection == "PREPARE RELEASE":
+            plugin.prepare_release(stdscr)
         elif selection == "SETTINGS":
             settings.draw_settings_menu(stdscr)
         
@@ -121,23 +125,9 @@ def handle_selection(stdscr, current_row, menu_options, height, width):
     
     return False
         
-def cli():
+def main():
     """Launch the full-screen Plubo CLI with optional direct commands"""
-     # Check for direct command-line execution
-    if len(sys.argv) > 1:
-        command = sys.argv[1].lower()
-        
-        if command == "rename" and len(sys.argv) == 3:
-            new_name = sys.argv[2]
-            try:
-                plugin.rename_project(new_name)
-                print(f"✅ Plugin renamed to {new_name} successfully.")
-            except Exception as e:
-                print(f"❌ Error: {str(e)}")
-            return  # Exit after execution
-
-    # If no direct command, launch the interactive menu
-    curses.wrapper(menu)
+    dispatch(menu)
 
 if __name__ == "__main__":
-    cli()
+    main()

@@ -46,8 +46,6 @@ def is_wp_cli_available():
 
 def run_command(command, cwd, stdscr):
     """Execute a shell command and display output in curses UI."""
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=str(cwd))
-
     height, width = stdscr.getmaxyx()
     box_height = height - 6  # Leave space for the message
     box_width = width - 8

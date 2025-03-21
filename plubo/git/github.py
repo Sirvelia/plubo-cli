@@ -2,6 +2,23 @@ import requests
 import curses
 from plubo.utils import interface
 
+def create_github_release(tag, repo, token):
+    url = f"https://api.github.com/repos/{repo}/releases"
+    headers = {
+        "Authorization": f"token {token}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "tag_name": tag,
+        "name": f"Release {tag}",
+        "body": f"Release {tag} generated automatically.",
+        "draft": False,
+        "prerelease": False
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+    return response.status_code == 201, response.json()
+
 def validate_github_token(token):
     """Check if GitHub token is valid before storing it."""
     headers = {"Authorization": f"token {token}"}

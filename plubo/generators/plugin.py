@@ -1,13 +1,13 @@
 import os
 import json
-import subprocess
-import curses
+import re
 from pathlib import Path
+import fnmatch
 from plubo.utils import project, interface, colors
 from plubo.settings.Config import Config
-from plubo.git.github import ask_for_github_namespace, create_github_repo
+from plubo.git.github import ask_for_github_namespace, create_github_repo, create_github_release
 from plubo.git.gitlab import ask_for_gitlab_namespace, create_gitlab_repo, get_custom_gitlab_domains
-from plubo.git.git_utils import initialize_git_repository, set_remote_and_push
+from plubo.git.git_utils import initialize_git_repository, set_remote_and_push, get_git_remote_repo, clear_git_lock
 
 def handle_repo_selection(stdscr, current_row, menu_options, plugin_directory, plugin_name, custom_domains):
     """Handle the selection of a menu option"""
@@ -131,14 +131,23 @@ def rename_project(stdscr):
     box_x = (stdscr.getmaxyx()[1] - 50) // 2  # Center box horizontally
     y_start = 8  # Position inputs inside the box
     
+    wp_root = project.detect_wp_root()
+    if not wp_root:
+        interface.display_message(stdscr, "❌ No WordPress installation detected. Aborting.", "error", 15)
+        stdscr.getch() 
+        return
+    
     old_name = project.detect_plugin_name()
     new_name = interface.get_user_input(stdscr, y_start, box_x, "Plugin name (empty to cancel):", 40)
+    
+    plugins_directory = wp_root / "wp-content/plugins"
+    plugin_directory = plugins_directory / old_name
     
     if not new_name:
         interface.display_message(stdscr, "⚠️ Rename cancelled.", "error", 15)
     else:
         interface.display_message(stdscr, f"Renaming {old_name} to {new_name}... ⏳", "info", 15)
-        rename_plugin(old_name, new_name)
+        rename_plugin(old_name, new_name, plugin_directory)
         interface.display_message(stdscr, "✅ Plugin renamed successfully!", "success", 16)
     
     stdscr.getch()  # Wait for user input before returning
@@ -180,8 +189,8 @@ def create_plugin(stdscr, new_name, wp_root):
         
         if project.run_command(command, plugins_directory, stdscr):
             interface.display_message(stdscr, f"✅ Successfully created {plugin_name}", "success", height - 3)
-            os.chdir(plugin_directory)  # Change directory to the newly created plugin folder
-            rename_plugin("plugin-placeholder", new_name)
+            rename_plugin("plugin-placeholder", new_name, plugin_directory)
+            # os.chdir(plugin_directory)  # Change directory to the newly created plugin folder
             stdscr.clear()
             activate_plugin(stdscr, plugin_name, plugin_directory)
             ask_for_repo_creation(stdscr, plugin_directory, plugin_name)
@@ -199,9 +208,8 @@ def create_plugin(stdscr, new_name, wp_root):
     stdscr.getch()  # Wait user input
             
 
-def rename_plugin(old_name, new_name):
+def rename_plugin(old_name, new_name, plugin_root= Path(os.getcwd())):
     """Replaces the plugin name in all relevant files with correct casing."""
-    plugin_root = Path(os.getcwd())  # Get current plugin directory
     parent_directory = plugin_root.parent  # The directory containing the plugin folder
     
     casing_variants = {
@@ -212,7 +220,7 @@ def rename_plugin(old_name, new_name):
     }
     
     # Update PHP files
-    for file in plugin_root.rglob("*.php"):
+    for file in iter_files(plugin_root, "*.php"):
         replace_in_file(file, casing_variants)
     
     # Update JSON files (composer.json, package.json)
@@ -238,11 +246,21 @@ def rename_plugin(old_name, new_name):
     new_plugin_folder = parent_directory / new_name.lower().replace(" ", "-")  # Normalize new folder name
     if plugin_root.exists():
         plugin_root.rename(new_plugin_folder)
-    
-    #TODO: MAYBE COMPILE assets AND activate plugin if lando is present
-
+        
+def iter_files(root, pattern):
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Remove vendor and node_modules directories from the search
+        dirnames[:] = [d for d in dirnames if d not in ("vendor", "node_modules")]
+        for filename in filenames:
+            if fnmatch.fnmatch(filename, pattern):
+                yield Path(dirpath) / filename
+                
 def replace_in_file(file_path, replacements):
     """Replaces occurrences of old names with new ones in a file."""
+    # Skip if the path is not a file
+    if not file_path.is_file():
+        return
+
     with file_path.open("r", encoding="utf-8") as f:
         content = f.read()
     
@@ -310,4 +328,131 @@ def activate_plugin(stdscr, plugin_name, plugin_directory):
     else:
         interface.display_message(stdscr, f"❌ Plugin activation failed!", "error", height - 3)
 
+    stdscr.getch()
+
+def prepare_release(stdscr):
+    """
+    Prepares a release by:
+     - Asking for the release version.
+     - Updating the plugin header and version variable in the main plugin file.
+     - Committing the changes and tagging the release.
+     - Executing the distribution archive command (with or without lando).
+     - Adding the generated ZIP archive to Git.
+    """
+    stdscr.clear()
+    interface.draw_background(stdscr, "🚀 Prepare Release")
+    height, width = stdscr.getmaxyx()
+    
+    wp_root = project.detect_wp_root()
+    if not wp_root:
+        interface.display_message(stdscr, "❌ No WordPress installation detected. Aborting.", "error", 15)
+        stdscr.getch()
+        return
+    
+    plugin_name = project.detect_plugin_name()
+    if not plugin_name:
+        interface.display_message(stdscr, "❌ No plugin detected. Aborting.", "error", 15)
+        stdscr.getch()
+        return
+    
+    plugin_name = plugin_name.lower().replace(" ", "-")
+    plugins_directory = wp_root / "wp-content/plugins"
+    plugin_root = plugins_directory / plugin_name
+
+    # Ask for the release number/version
+    box_x = (width - 50) // 2
+    release = interface.get_user_input(stdscr, 8, box_x, "Enter release version:", 20)
+    if not release:
+        interface.display_message(stdscr, "Release cancelled.", "error", 4)
+        stdscr.getch()
+        return
+
+    # Detect plugin name and main plugin file (assumes plugin name equals main file name)
+    main_plugin_file = os.path.join(plugin_root, f"{plugin_name}.php")
+    if not os.path.exists(main_plugin_file):
+        interface.display_message(stdscr, "Main plugin file not found.", "error", 4)
+        stdscr.getch()
+        return
+    
+    plugin_constant = plugin_name.upper().replace("-", "_") + "_VERSION"
+
+    # Update version in plugin header and version variable using regex substitutions.
+    with open(main_plugin_file, "r", encoding="utf-8") as f:
+        content = f.read()
+    
+    # 1. Update header version
+    new_content = re.sub(
+        r"(Version:\s*)([\d\.]+)",
+        lambda m: m.group(1) + release,
+        content,
+        flags=re.IGNORECASE
+    )
+
+    # 2. Update version constant
+    pattern = rf"(define\(\s*['\"]{re.escape(plugin_constant)}['\"]\s*,\s*['\"])([\d\.]+)(['\"]\s*\))"
+
+    new_content = re.sub(
+        pattern,
+        lambda m: m.group(1) + release + m.group(3),
+        new_content
+    )
+
+    with open(main_plugin_file, "w", encoding="utf-8") as f:
+        f.write(new_content)
+
+    interface.display_message(stdscr, f"Updated version in {main_plugin_file}", "success", 4)
+    stdscr.refresh()
+    
+    clear_git_lock(plugin_root)
+
+    # Commit the version change and create a tag.
+    if not project.run_command(["git", "add", main_plugin_file], plugin_root, stdscr):
+        interface.display_message(stdscr, "Failed to stage changes.", "error", 4)
+        stdscr.getch()
+        return
+    
+    interface.display_message(stdscr, f"Added file", "success", 5)
+    stdscr.refresh()
+
+    commit_msg = f"Release version {release}"
+    if not project.run_command(["git", "commit", "-m", commit_msg], plugin_root, stdscr):
+        interface.display_message(stdscr, "Git commit failed.", "error", 4)
+        stdscr.getch()
+        return
+    
+    interface.display_message(stdscr, f"Commited file", "success", 5)
+    stdscr.refresh()
+
+    if not project.run_command(["git", "tag", release], plugin_root, stdscr):
+        interface.display_message(stdscr, "Git tag creation failed.", "error", 4)
+        stdscr.getch()
+        return
+    
+    interface.display_message(stdscr, f"Tag created", "success", 5)
+    stdscr.refresh()
+    
+    if not project.run_command(["git", "push", "origin", "main"], plugin_root, stdscr):
+        interface.display_message(stdscr, "Git push failed.", "error", 4)
+        stdscr.getch()
+        return
+    
+    interface.display_message(stdscr, f"Pushed to repo", "success", 5)
+    stdscr.refresh()
+    
+    token = Config.get("github", "token")
+    repo = get_git_remote_repo(plugin_root)
+    create_github_release(release, repo, token)
+
+    # Execute the WP distribution archive command.
+    # if project.is_lando_project():
+    #     archive_cmd = ["lando", "wp", "dist", "archive", "."]
+    # else:
+    #     archive_cmd = ["wp", "dist", "archive", "."]
+
+    # if not project.run_command(archive_cmd, plugin_root, stdscr):
+    #     interface.display_message(stdscr, "Failed to create distribution archive.", "error", 4)
+    #     stdscr.getch()
+    #     return
+
+    stdscr.addstr(height - 2, 4, "Press any key to return to the main menu.")
     stdscr.getch()

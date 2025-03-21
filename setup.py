@@ -10,7 +10,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "pb-cli=plubo.cli:cli",
+            "pb-cli=plubo.main:main",
         ],
     },
 )
