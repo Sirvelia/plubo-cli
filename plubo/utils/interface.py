@@ -9,6 +9,19 @@ PB_CLI_ASCII = [
     "╩  ╚═╝   ╚═╝╩═╝╩"
 ]
 
+
+# PB_CLI_ASCII = [
+# "█▀█ █▄▄ ▄▄ █▀▀ █░░ █",
+# "█▀▀ █▄█ ░░ █▄▄ █▄▄ █"
+# ]
+
+FAIL_ASCII = [
+    "▄██████████████▄▐█▄▄▄▄█▌",
+    "██████▌▄▌▄▐▐▌███▌▀▀██▀▀ ",
+    "████▄█▌▄▌▄▐▐▌▀███▄▄█▌   ",
+    "▄▄▄▄▄██████████████▀    "
+]
+
 def draw_background(stdscr, title=None):
     """Draws the UI background, title, and project information, but excludes the menu."""
     stdscr.clear()
@@ -175,17 +188,28 @@ def draw_title(stdscr, title):
     stdscr.addstr(2, (width - len(title)) // 2, title, curses.color_pair(2) | curses.A_BOLD)
 
 def display_message(stdscr, message, msg_type="info", y=15, x=4):
-    """Displays a status message with color based on type, handling line wrapping."""
+    """Displays a status message with color based on type, handling line wrapping.
+    If it's an error, it also displays FAIL ASCII art."""
     color_map = {"success": 1, "error": 4, "info": 2}
-    max_y, max_x = stdscr.getmaxyx()  # Get terminal size
-    max_width = max_x - x - 1  # Leave space for margins
+    max_y, max_x = stdscr.getmaxyx()
+    max_width = max_x - x - 1
+
+    # If it's an error, display the FAIL ASCII art
+    if msg_type == "error":
+        stdscr.clear()
+        y=4
+        for i, line in enumerate(FAIL_ASCII):
+            if y + i < max_y:
+                stdscr.addstr(y + i, (max_x - len(line)) // 2, line, curses.color_pair(4) | curses.A_BOLD)
+        y += len(FAIL_ASCII) + 1  # Offset message to appear below the art
 
     wrapped_lines = textwrap.wrap(message, width=max_width)
-
     for i, line in enumerate(wrapped_lines):
-        stdscr.addstr(y + i, x, line, curses.color_pair(color_map.get(msg_type, 2)) | curses.A_BOLD)
+        if y + i < max_y:
+            stdscr.addstr(y + i, x, line, curses.color_pair(color_map.get(msg_type, 2)) | curses.A_BOLD)
 
     stdscr.refresh()
+
 
 
 def draw_input_box(stdscr, y, x, question_lines, input_lines, box_width, border_color, text_color, hidden=False):
