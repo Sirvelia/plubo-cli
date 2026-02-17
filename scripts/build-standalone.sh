@@ -9,8 +9,8 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! python3 -c "import PyInstaller" >/dev/null 2>&1; then
-  python3 -m pip install pyinstaller
+if ! python3 -c "import PyInstaller, requests, packaging" >/dev/null 2>&1; then
+  python3 -m pip install . pyinstaller
 fi
 
 python3 -m PyInstaller \
