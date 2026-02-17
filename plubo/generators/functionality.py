@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import curses
+import re
 from plubo.utils import project, interface  # Import function to get the plugin name
 
 # Define the absolute path to the templates directory (sibling folder)
@@ -89,7 +90,8 @@ def create_functionality(name, template_filename):
     template_file = TEMPLATES_DIR / template_filename  # Get the template file path
 
     # Convert name to PascalCase
-    class_name = ''.join(word.capitalize() for word in name.split())
+    parts = re.split(r'[-\s]+', name)
+    class_name = ''.join(word.capitalize() for word in parts)
 
     # Handle subfolders like "Admin/AdminMenus.php"
     subfolder, file_name = os.path.split(template_filename)
