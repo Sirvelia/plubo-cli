@@ -16,22 +16,30 @@ COMMANDS = {
     'rename': rename_plugin.rename_command,
 }
 
-def dispatch(menu):
+def _print_usage():
+    print("Usage: pb-cli <command> [args]")
+    print("Available commands:", ", ".join(COMMANDS.keys()))
+
+
+def dispatch(menu=None):
     if len(sys.argv) < 2:
-        
-        # If no direct command, launch the interactive menu
-        curses.wrapper(menu)
-        sys.exit(1)
-    
-    # if len(sys.argv) < 2:
-    #     print("Usage: plubo <command> [args]")
-    #     print("Available commands:", ", ".join(COMMANDS.keys()))
-    #     sys.exit(1)
+        # In interactive shells, open the menu. In non-TTY (e.g. Docker entrypoint),
+        # print usage instead of failing with curses.
+        if menu and sys.stdin.isatty() and sys.stdout.isatty():
+            curses.wrapper(menu)
+            return
+        _print_usage()
+        sys.exit(2)
+
+    if sys.argv[1] in {"help", "--help", "-h"}:
+        _print_usage()
+        sys.exit(0)
 
     command_name = sys.argv[1]
     command_func = COMMANDS.get(command_name)
     if not command_func:
         print(f"Unknown command: {command_name}")
+        _print_usage()
         sys.exit(1)
 
     # Pass remaining arguments to the command function
