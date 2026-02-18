@@ -1,46 +1,61 @@
 import sys
-import re
 import subprocess
-from plubo.generators.node_dependency import DEPENDENCY_OPTIONS
+from plubo.generators.node_dependency import get_dependency_packages, resolve_dependency
 
 
-def _normalize_token(value):
-    return re.sub(r"[^a-z0-9]+", "", value.lower())
+def _parse_args(args):
+    install_as_dev = False
+    package_tokens = []
 
-
-def _resolve_package(value):
-    normalized_value = _normalize_token(value)
-
-    for option, package_name in DEPENDENCY_OPTIONS.items():
-        if not package_name:
+    for arg in args:
+        if arg in {"-D", "--dev"}:
+            install_as_dev = True
             continue
+        package_tokens.append(arg)
 
-        candidate_tokens = {
-            _normalize_token(option),
-            _normalize_token(package_name),
-        }
-        candidate_tokens.update(_normalize_token(token) for token in package_name.split())
+    return package_tokens, install_as_dev
 
-        if normalized_value in candidate_tokens:
-            return package_name
+def _build_commands(packages):
+    regular_packages = [package["name"] for package in packages if not package["dev"]]
+    dev_packages = [package["name"] for package in packages if package["dev"]]
+    commands = []
 
-    return value
+    if regular_packages:
+        commands.append(["yarn", "add"] + regular_packages)
+    if dev_packages:
+        commands.append(["yarn", "add", "--dev"] + dev_packages)
+
+    return commands
 
 def add_node_dependency_command(args):
     if not args:
-        print("Usage: plubo node-dep <package|preset>")
+        print("Usage: plubo node-dep [--dev|-D] <package|preset>")
         print("Example presets: alpinejs, tailwind-css, daisy-ui, hikeflow")
+        print("Use --dev/-D to install custom packages as devDependencies.")
         sys.exit(1)
 
-    package_input = " ".join(args).strip()
-    package_name = _resolve_package(package_input)
-    command = ["yarn", "add"] + package_name.split()
+    package_tokens, install_as_dev = _parse_args(args)
+    if not package_tokens:
+        print("Usage: plubo node-dep [--dev|-D] <package|preset>")
+        sys.exit(1)
+
+    package_input = " ".join(package_tokens).strip()
+    dependency_option, is_preset = resolve_dependency(package_input)
+    packages = get_dependency_packages(dependency_option)
+
+    if not is_preset and install_as_dev:
+        for package in packages:
+            package["dev"] = True
+
+    commands = _build_commands(packages)
+    package_display = ", ".join(package["name"] for package in packages)
 
     try:
-        subprocess.run(command, check=True)
-        print(f"✅ Successfully installed: {package_name}")
+        for command in commands:
+            subprocess.run(command, check=True)
+        print(f"✅ Successfully installed: {package_display}")
     except FileNotFoundError:
-        print(f"❌ Command not found: {command[0]}")
+        print(f"❌ Command not found: {commands[0][0]}")
         sys.exit(1)
     except subprocess.CalledProcessError as error:
         print(f"❌ Installation failed (exit code {error.returncode}): {' '.join(command)}")
