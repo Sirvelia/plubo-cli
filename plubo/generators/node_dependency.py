@@ -88,18 +88,24 @@ def resolve_dependency(value):
 
 def _resolve_js_entrypoint(cwd):
     candidates = [
+        cwd / "resources/scripts/app.ts",
+        cwd / "resources/scripts/app.js",
         cwd / "resources/js/app.js",
+        cwd / "src/app.ts",
+        cwd / "src/main.ts",
         cwd / "src/app.js",
         cwd / "src/main.js",
         cwd / "assets/js/app.js",
         cwd / "assets/src/app.js",
+        cwd / "assets/src/js/app.js",
     ]
 
     for path in candidates:
         if path.exists():
             return path, False
 
-    fallback = cwd / "resources/js/app.js"
+    use_typescript = (cwd / "resources/styles/app.scss").exists() or (cwd / "resources/scripts").exists()
+    fallback = cwd / "resources/scripts/app.ts" if use_typescript else cwd / "resources/js/app.js"
     created = not fallback.exists()
     DependencyScaffoldUtils.write_file_if_missing(fallback, "", cwd)
     return fallback, created
@@ -117,8 +123,58 @@ def _ensure_import(entrypoint_path, import_line):
         entrypoint_path.write_text(f"{import_line}\n", encoding="utf-8")
     return True
 
+def _ensure_scss_import(entrypoint_path, import_line):
+    content = entrypoint_path.read_text(encoding="utf-8")
+    normalized_import = import_line.strip()
+
+    if normalized_import in content or "tailwind.css" in content:
+        return False
+
+    if content.strip():
+        entrypoint_path.write_text(f"{import_line}\n{content}", encoding="utf-8")
+    else:
+        entrypoint_path.write_text(f"{import_line}\n", encoding="utf-8")
+    return True
+
+def _ensure_postcss_tailwind(cwd):
+    postcss_config_path = cwd / "postcss.config.js"
+    if not postcss_config_path.exists():
+        return DependencyScaffoldUtils.copy_template_if_missing(
+            NODE_TEMPLATES_DIR / "postcss.config.js",
+            postcss_config_path,
+            cwd,
+        )
+
+    content = postcss_config_path.read_text(encoding="utf-8")
+    if "tailwindcss" in content:
+        return f"Kept existing `{DependencyScaffoldUtils.display_path(postcss_config_path, cwd)}`"
+
+    updated_content = content
+    if "plugins: [" in content:
+        updated_content = content.replace(
+            "plugins: [",
+            "plugins: [\n    \"tailwindcss\",",
+            1,
+        )
+    elif "plugins: {" in content:
+        updated_content = content.replace(
+            "plugins: {",
+            "plugins: {\n    tailwindcss: {},",
+            1,
+        )
+    else:
+        return (
+            f"Skipped `{DependencyScaffoldUtils.display_path(postcss_config_path, cwd)}`: "
+            "unable to auto-add tailwindcss plugin"
+        )
+
+    postcss_config_path.write_text(updated_content, encoding="utf-8")
+    return f"Updated `{DependencyScaffoldUtils.display_path(postcss_config_path, cwd)}` with tailwindcss plugin"
+
 def _scaffold_tailwind_setup(cwd):
     messages = []
+    has_plubo_layout = (cwd / "resources/styles/app.scss").exists()
+
     messages.append(
         DependencyScaffoldUtils.copy_template_if_missing(
             NODE_TEMPLATES_DIR / "tailwind.config.js",
@@ -126,13 +182,28 @@ def _scaffold_tailwind_setup(cwd):
             cwd,
         )
     )
-    messages.append(
-        DependencyScaffoldUtils.copy_template_if_missing(
-            NODE_TEMPLATES_DIR / "postcss.config.js",
-            cwd / "postcss.config.js",
-            cwd,
+    messages.append(_ensure_postcss_tailwind(cwd))
+
+    if has_plubo_layout:
+        messages.append(
+            DependencyScaffoldUtils.copy_template_if_missing(
+                NODE_TEMPLATES_DIR / "app.css",
+                cwd / "resources/styles/tailwind.css",
+                cwd,
+            )
         )
-    )
+
+        app_scss_path = cwd / "resources/styles/app.scss"
+        if _ensure_scss_import(app_scss_path, '@import "tailwind.css";'):
+            messages.append(
+                f"Added Tailwind import to `{DependencyScaffoldUtils.display_path(app_scss_path, cwd)}`"
+            )
+        else:
+            messages.append(
+                f"Kept existing Tailwind import in `{DependencyScaffoldUtils.display_path(app_scss_path, cwd)}`"
+            )
+        return messages
+
     messages.append(
         DependencyScaffoldUtils.copy_template_if_missing(
             NODE_TEMPLATES_DIR / "app.css",
@@ -158,16 +229,18 @@ def _scaffold_tailwind_setup(cwd):
 
 def _scaffold_alpine_bootstrap(cwd):
     messages = []
-    bootstrap_path = cwd / "resources/js/alpine-bootstrap.js"
+    entrypoint_path, created = _resolve_js_entrypoint(cwd)
+    bootstrap_extension = ".ts" if entrypoint_path.suffix in {".ts", ".tsx"} else ".js"
+    bootstrap_template_name = "alpine-bootstrap.ts" if bootstrap_extension == ".ts" else "alpine-bootstrap.js"
+    bootstrap_path = entrypoint_path.parent / f"alpine-bootstrap{bootstrap_extension}"
     messages.append(
         DependencyScaffoldUtils.copy_template_if_missing(
-            NODE_TEMPLATES_DIR / "alpine-bootstrap.js",
+            NODE_TEMPLATES_DIR / bootstrap_template_name,
             bootstrap_path,
             cwd,
         )
     )
 
-    entrypoint_path, created = _resolve_js_entrypoint(cwd)
     if created:
         messages.append(f"Created `{DependencyScaffoldUtils.display_path(entrypoint_path, cwd)}`")
 

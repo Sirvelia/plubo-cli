@@ -1,11 +1,18 @@
 module.exports = {
   content: [
-    "./**/*.php",
-    "./resources/**/*.js",
-    "./resources/**/*.css"
+    "./resources/**/*.{php,js,ts,tsx,css,scss}",
+    "./Functionality/**/*.php",
+    "./Components/**/*.php",
   ],
   theme: {
-    extend: {}
+    extend: {
+      colors: {},
+    },
   },
-  plugins: []
+  plugins: [],
+  important: true,
+  prefix: "pb-",
+  corePlugins: {
+    preflight: false,
+  },
 };
