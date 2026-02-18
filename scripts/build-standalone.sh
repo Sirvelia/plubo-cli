@@ -18,6 +18,7 @@ python3 -m PyInstaller \
   --clean \
   --onefile \
   --name pb-cli \
+  --runtime-hook scripts/pyinstaller_subprocess_env_hook.py \
   --add-data "plubo/templates:plubo/templates" \
   plubo/main.py
 
