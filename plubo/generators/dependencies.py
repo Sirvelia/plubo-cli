@@ -50,18 +50,37 @@ def get_latest_composer_version(package_name):
 
 def check_composer_dependencies():
     """
-    Checks all dependencies in composer.json for outdated versions.
+    Checks direct Composer dependencies for outdated versions using
+    installed versions reported by Composer.
     Returns a dict where keys are package names and values are a dict with
     'current' and 'latest' version information.
     """
-    deps = get_composer_dependencies()
+    try:
+        result = subprocess.run(
+            ["composer", "outdated", "--direct", "--format=json"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except Exception:
+        return {}
+
+    if result.returncode not in (0, 1):
+        return {}
+
+    try:
+        data = json.loads(result.stdout) if result.stdout else {}
+    except json.JSONDecodeError:
+        return {}
+
     outdated = {}
-    
-    for package, current_version in deps.items():
-        latest_version = get_latest_composer_version(package)
-        if latest_version and latest_version != current_version:
-            outdated[package] = {"current": current_version, "latest": latest_version}
-    
+    for package in data.get("installed", []):
+        package_name = package.get("name")
+        current_version = package.get("version")
+        latest_version = package.get("latest")
+        if package_name and current_version and latest_version and current_version != latest_version:
+            outdated[package_name] = {"current": current_version, "latest": latest_version}
+
     return outdated
 
 def get_yarn_outdated():
