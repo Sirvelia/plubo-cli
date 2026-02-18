@@ -1,31 +1,11 @@
 import sys
-import re
 import subprocess
-from plubo.generators.php_dependency import DEPENDENCY_OPTIONS
+from plubo.generators.php_dependency import (
+    apply_post_install_actions,
+    get_dependency_package,
+    resolve_dependency,
+)
 from plubo.utils import project
-
-
-def _normalize_token(value):
-    return re.sub(r"[^a-z0-9]+", "", value.lower())
-
-
-def _resolve_package(value):
-    normalized_value = _normalize_token(value)
-
-    for option, package_name in DEPENDENCY_OPTIONS.items():
-        if not package_name:
-            continue
-
-        candidate_tokens = {
-            _normalize_token(option),
-            _normalize_token(package_name),
-        }
-        candidate_tokens.update(_normalize_token(token) for token in package_name.split())
-
-        if normalized_value in candidate_tokens:
-            return package_name
-
-    return value
 
 def add_php_dependency_command(args):
     if not args:
@@ -34,7 +14,8 @@ def add_php_dependency_command(args):
         sys.exit(1)
 
     package_input = " ".join(args).strip()
-    package_name = _resolve_package(package_input)
+    dependency_option, _ = resolve_dependency(package_input)
+    package_name = get_dependency_package(dependency_option)
     command = (
         ["lando", "composer", "require"] + package_name.split()
         if project.is_lando_project()
@@ -43,7 +24,10 @@ def add_php_dependency_command(args):
 
     try:
         subprocess.run(command, check=True)
+        post_install_messages = apply_post_install_actions(dependency_option)
         print(f"✅ Successfully installed: {package_name}")
+        for post_install_message in post_install_messages:
+            print(f"ℹ️ {post_install_message}")
     except FileNotFoundError:
         print(f"❌ Command not found: {command[0]}")
         sys.exit(1)

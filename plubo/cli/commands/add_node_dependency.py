@@ -1,6 +1,10 @@
 import sys
 import subprocess
-from plubo.generators.node_dependency import get_dependency_packages, resolve_dependency
+from plubo.generators.node_dependency import (
+    apply_post_install_actions,
+    get_dependency_packages,
+    resolve_dependency,
+)
 
 
 def _parse_args(args):
@@ -53,7 +57,10 @@ def add_node_dependency_command(args):
     try:
         for command in commands:
             subprocess.run(command, check=True)
+        post_install_messages = apply_post_install_actions(dependency_option)
         print(f"✅ Successfully installed: {package_display}")
+        for post_install_message in post_install_messages:
+            print(f"ℹ️ {post_install_message}")
     except FileNotFoundError:
         print(f"❌ Command not found: {commands[0][0]}")
         sys.exit(1)

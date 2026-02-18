@@ -9,6 +9,7 @@ setup(
         "plubo": [
             "templates/*.php",
             "templates/Admin/*.php",
+            "templates/node/*",
         ],
     },
     install_requires=[
