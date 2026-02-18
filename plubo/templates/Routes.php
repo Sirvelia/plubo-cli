@@ -21,20 +21,21 @@ class Routes
         add_filter('plubo/routes', [$this, 'add_routes']);
     }
 
-    public function load_plubo_routes($routes)
+    public function load_plubo_routes()
     {
         \PluboRoutes\RoutesProcessor::init();
     }
 
     public function add_routes($routes)
     {
-        // $routes[] = new Route(
-        //     'test/{param:slug}',
-        //     'theme_template_name',
-        //     [
-        //         'name' => 'my-route',
-        //     ]
-        // );
+        $new_route = new Route(
+            'test/{param:slug}',
+            'template_name',
+            [
+                'name' => 'my-route',
+            ]
+        );
+        $routes[] = $new_route;
 
         return $routes;
     }
