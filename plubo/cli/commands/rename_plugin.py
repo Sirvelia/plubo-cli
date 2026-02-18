@@ -9,5 +9,10 @@ def rename_command(args):
     
     old_name = args[0]
     new_name = args[1]
-    result = rename_plugin(old_name, new_name)
-    print(result)
+    try:
+        rename_plugin(old_name, new_name)
+        print(f"✅ Plugin renamed from '{old_name}' to '{new_name}'.")
+        sys.exit(0)
+    except Exception as error:
+        print(f"❌ Rename failed: {error}")
+        sys.exit(1)
