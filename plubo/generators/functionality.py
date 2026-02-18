@@ -15,6 +15,7 @@ FUNCTIONALITY_OPTIONS = {
     "CART": "Cart.php",
     "CRONS": "Crons.php",
     "CUSTOM FIELDS": "CustomFields.php",
+    "CUSTOM POST TYPES": "CustomPostTypes.php",
     "ORDERS": "Orders.php",
     "POST ACTIONS": "PostActions.php",
     "PRODUCTS": "Products.php",
@@ -119,4 +120,3 @@ def create_functionality(name, template_filename):
     # Write the new functionality file
     file_path.write_text(php_code, encoding="utf-8")
     return True, f"Functionality '{class_name}' created successfully at {file_path}"
-
