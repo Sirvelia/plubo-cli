@@ -275,13 +275,16 @@ def replace_in_json(file_path, replacements):
     with file_path.open("r", encoding="utf-8") as f:
         data = json.load(f)
     
+    def replace_string(text):
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        return text
+
     def recursive_replace(obj):
         if isinstance(obj, str):
-            for old, new in replacements.items():
-                obj = obj.replace(old, new)
-            return obj
+            return replace_string(obj)
         elif isinstance(obj, dict):
-            return {key: recursive_replace(value) for key, value in obj.items()}
+            return {replace_string(key): recursive_replace(value) for key, value in obj.items()}
         elif isinstance(obj, list):
             return [recursive_replace(item) for item in obj]
         return obj
