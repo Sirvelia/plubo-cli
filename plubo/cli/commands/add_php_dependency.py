@@ -10,7 +10,7 @@ from plubo.utils import project
 def add_php_dependency_command(args):
     if not args:
         print("Usage: plubo php-dep <package|preset>")
-        print("Example presets: routes, roles, logs, checks, jwt")
+        print("Example presets: routes, roles, logs, checks, jwt, bladeone")
         sys.exit(1)
 
     package_input = " ".join(args).strip()

@@ -2,6 +2,7 @@ import subprocess
 import curses
 import json
 import os
+import re
 from pathlib import Path
 from plubo.utils import project, interface
 from plubo.generators import functionality
@@ -13,6 +14,12 @@ DEPENDENCY_OPTIONS = {
     "LOGS": {"package": "sirvelia-labs/plubo-logs"},
     "CHECKS": {"package": "sirvelia-labs/plubo-checks"},
     "JWT": {"package": "sirvelia/plubo-jwt"},
+    "BLADEONE": {
+        "package": "eftec/bladeone",
+        "post_install": [
+            "scaffold_blade_loader",
+        ],
+    },
     "CARBON FIELDS": {
         "package": "htmlburger/carbon-fields",
         "post_install": [
@@ -61,6 +68,23 @@ def resolve_dependency(value):
 
     return {"package": value}, False
 
+def _detect_plugin_name(cwd):
+    for file_path in cwd.glob("*.php"):
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        match = re.search(r"Text Domain:\s*(.+)", content)
+        if match:
+            return match.group(1).strip()
+
+    return None
+
+def _plugin_namespace(plugin_name):
+    parts = re.split(r"[-_\s]+", plugin_name)
+    return "".join(part.capitalize() for part in parts if part)
+
 def _scaffold_carbon_fields_functionality(cwd):
     created, message = functionality.create_functionality("Custom Fields", "CustomFields.php")
     return [message if created else message]
@@ -69,12 +93,30 @@ def _scaffold_crons_functionality(cwd):
     created, message = functionality.create_functionality("Crons", "Crons.php")
     return [message if created else message]
 
+def _scaffold_blade_loader(cwd):
+    template_path = Path(__file__).parent.parent / "templates" / "Includes" / "BladeLoader.php"
+    destination_path = cwd / "Includes" / "BladeLoader.php"
+
+    if not template_path.exists():
+        return [
+            f"Skipped `{DependencyScaffoldUtils.display_path(destination_path, cwd)}`: "
+            f"missing template `{template_path}`"
+        ]
+
+    plugin_name = _detect_plugin_name(cwd) or "plugin-placeholder"
+    namespace = _plugin_namespace(plugin_name)
+    template_content = template_path.read_text(encoding="utf-8")
+    rendered_content = template_content.replace("PluginPlaceholder", namespace)
+
+    return [DependencyScaffoldUtils.write_file_if_missing(destination_path, rendered_content, cwd)]
+
 def apply_post_install_actions(dependency_option, cwd=None):
     cwd = Path(cwd) if cwd else Path(os.getcwd())
     messages = []
     action_handlers = {
         "scaffold_carbon_fields_functionality": _scaffold_carbon_fields_functionality,
         "scaffold_crons_functionality": _scaffold_crons_functionality,
+        "scaffold_blade_loader": _scaffold_blade_loader,
     }
 
     for action in get_post_install_actions(dependency_option):

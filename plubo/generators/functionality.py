@@ -2,10 +2,16 @@ import os
 from pathlib import Path
 import curses
 import re
+import json
 from plubo.utils import project, interface  # Import function to get the plugin name
 
 # Define the absolute path to the templates directory (sibling folder)
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+BLADE_PACKAGE = "eftec/bladeone"
+BLADE_TEMPLATE_OVERRIDES = {
+    "Admin/AdminMenus.php": "Admin/AdminMenusBlade.php",
+    "Shortcodes.php": "ShortcodesBlade.php",
+}
 
 # Functionality options and their respective PHP templates
 FUNCTIONALITY_OPTIONS = {
@@ -27,6 +33,22 @@ FUNCTIONALITY_OPTIONS = {
     "CUSTOM": "Functionality.php",  # Base template for user-defined classes
     "BACK": None
 }
+
+def _is_blade_installed(plugin_root):
+    composer_json_path = plugin_root / "composer.json"
+    if not composer_json_path.exists():
+        return False
+
+    try:
+        composer_data = json.loads(composer_json_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return False
+
+    required_packages = composer_data.get("require", {})
+    if not isinstance(required_packages, dict):
+        return False
+
+    return BLADE_PACKAGE in required_packages
 
 def handle_selection(stdscr, current_row, menu_options, height, width):
     """Handle the selection of a menu option"""
@@ -88,7 +110,11 @@ def create_functionality(name, template_filename):
     """Creates a new functionality file based on the given template."""
     plugin_root = Path(os.getcwd())  # Plugin directory (assumed current working directory)
     functionality_dir = plugin_root / "Functionality"
-    template_file = TEMPLATES_DIR / template_filename  # Get the template file path
+    resolved_template_filename = template_filename
+    blade_template = BLADE_TEMPLATE_OVERRIDES.get(template_filename)
+    if blade_template and _is_blade_installed(plugin_root):
+        resolved_template_filename = blade_template
+    template_file = TEMPLATES_DIR / resolved_template_filename  # Get the template file path
 
     # Convert name to PascalCase
     parts = re.split(r'[-\s]+', name)
