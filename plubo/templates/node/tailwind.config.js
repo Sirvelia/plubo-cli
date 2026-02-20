@@ -1,6 +1,6 @@
 module.exports = {
   content: [
-    "./resources/**/*.{php,js,ts,tsx,css,scss}",
+    "./src/**/*.{php,js,ts,tsx,css,scss}",
     "./Functionality/**/*.php",
     "./Components/**/*.php",
   ],

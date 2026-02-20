@@ -88,9 +88,9 @@ def resolve_dependency(value):
 
 def _resolve_js_entrypoint(cwd):
     candidates = [
-        cwd / "resources/scripts/app.ts",
-        cwd / "resources/scripts/app.js",
-        cwd / "resources/js/app.js",
+        cwd / "src/scripts/app.ts",
+        cwd / "src/scripts/app.js",
+        cwd / "src/js/app.js",
         cwd / "src/app.ts",
         cwd / "src/main.ts",
         cwd / "src/app.js",
@@ -104,8 +104,8 @@ def _resolve_js_entrypoint(cwd):
         if path.exists():
             return path, False
 
-    use_typescript = (cwd / "resources/styles/app.scss").exists() or (cwd / "resources/scripts").exists()
-    fallback = cwd / "resources/scripts/app.ts" if use_typescript else cwd / "resources/js/app.js"
+    use_typescript = (cwd / "src/styles/app.scss").exists() or (cwd / "src/scripts").exists()
+    fallback = cwd / "src/scripts/app.ts" if use_typescript else cwd / "src/js/app.js"
     created = not fallback.exists()
     DependencyScaffoldUtils.write_file_if_missing(fallback, "", cwd)
     return fallback, created
@@ -173,7 +173,7 @@ def _ensure_postcss_tailwind(cwd):
 
 def _scaffold_tailwind_setup(cwd):
     messages = []
-    has_plubo_layout = (cwd / "resources/styles/app.scss").exists()
+    has_plubo_layout = (cwd / "src/styles/app.scss").exists()
 
     messages.append(
         DependencyScaffoldUtils.copy_template_if_missing(
@@ -188,12 +188,12 @@ def _scaffold_tailwind_setup(cwd):
         messages.append(
             DependencyScaffoldUtils.copy_template_if_missing(
                 NODE_TEMPLATES_DIR / "app.css",
-                cwd / "resources/styles/tailwind.css",
+                cwd / "src/styles/tailwind.css",
                 cwd,
             )
         )
 
-        app_scss_path = cwd / "resources/styles/app.scss"
+        app_scss_path = cwd / "src/styles/app.scss"
         if _ensure_scss_import(app_scss_path, '@import "tailwind.css";'):
             messages.append(
                 f"Added Tailwind import to `{DependencyScaffoldUtils.display_path(app_scss_path, cwd)}`"
@@ -207,7 +207,7 @@ def _scaffold_tailwind_setup(cwd):
     messages.append(
         DependencyScaffoldUtils.copy_template_if_missing(
             NODE_TEMPLATES_DIR / "app.css",
-            cwd / "resources/css/app.css",
+            cwd / "src/css/app.css",
             cwd,
         )
     )
@@ -216,8 +216,8 @@ def _scaffold_tailwind_setup(cwd):
         DependencyScaffoldUtils.ensure_package_json_scripts(
             cwd,
             {
-                "tailwind:build": "tailwindcss -i ./resources/css/app.css -o ./assets/css/app.css --minify",
-                "tailwind:watch": "tailwindcss -i ./resources/css/app.css -o ./assets/css/app.css --watch",
+                "tailwind:build": "tailwindcss -i ./src/css/app.css -o ./assets/css/app.css --minify",
+                "tailwind:watch": "tailwindcss -i ./src/css/app.css -o ./assets/css/app.css --watch",
             },
             {
                 "build": "yarn tailwind:build",
