@@ -2,6 +2,7 @@ from pathlib import Path
 import curses
 import os
 import json
+import re
 from plubo.utils import project, interface
 from plubo.generators.dependency_utils import DependencyScaffoldUtils
 
@@ -19,8 +20,7 @@ DEPENDENCY_OPTIONS = {
     "TAILWIND CSS": {
         "packages": [
             {"name": "tailwindcss", "dev": True},
-            {"name": "postcss", "dev": True},
-            {"name": "autoprefixer", "dev": True},
+            {"name": "@tailwindcss/vite", "dev": True},
         ],
         "post_install": ["scaffold_tailwind_setup"],
     },
@@ -136,53 +136,78 @@ def _ensure_scss_import(entrypoint_path, import_line):
         entrypoint_path.write_text(f"{import_line}\n", encoding="utf-8")
     return True
 
-def _ensure_postcss_tailwind(cwd):
-    postcss_config_path = cwd / "postcss.config.js"
-    if not postcss_config_path.exists():
-        return DependencyScaffoldUtils.copy_template_if_missing(
-            NODE_TEMPLATES_DIR / "postcss.config.js",
-            postcss_config_path,
-            cwd,
-        )
+def _find_vite_config_path(cwd):
+    for filename in (
+        "vite.config.ts",
+        "vite.config.js",
+        "vite.config.mts",
+        "vite.config.mjs",
+        "vite.config.cts",
+        "vite.config.cjs",
+    ):
+        path = cwd / filename
+        if path.exists():
+            return path
+    return None
 
-    content = postcss_config_path.read_text(encoding="utf-8")
-    if "tailwindcss" in content:
-        return f"Kept existing `{DependencyScaffoldUtils.display_path(postcss_config_path, cwd)}`"
+def _ensure_vite_tailwind_plugin(cwd):
+    vite_config_path = _find_vite_config_path(cwd)
+    if not vite_config_path:
+        return "Skipped Vite config update: no `vite.config.*` file found"
 
+    content = vite_config_path.read_text(encoding="utf-8")
     updated_content = content
-    if "plugins: [" in content:
-        updated_content = content.replace(
-            "plugins: [",
-            "plugins: [\n    \"tailwindcss\",",
-            1,
-        )
-    elif "plugins: {" in content:
-        updated_content = content.replace(
-            "plugins: {",
-            "plugins: {\n    tailwindcss: {},",
-            1,
-        )
-    else:
-        return (
-            f"Skipped `{DependencyScaffoldUtils.display_path(postcss_config_path, cwd)}`: "
-            "unable to auto-add tailwindcss plugin"
-        )
 
-    postcss_config_path.write_text(updated_content, encoding="utf-8")
-    return f"Updated `{DependencyScaffoldUtils.display_path(postcss_config_path, cwd)}` with tailwindcss plugin"
+    if "@tailwindcss/vite" not in updated_content:
+        import_line = 'import tailwindcss from "@tailwindcss/vite";'
+        require_line = 'const tailwindcss = require("@tailwindcss/vite");'
+
+        import_matches = list(re.finditer(r"^import\s.+$", updated_content, flags=re.MULTILINE))
+        if import_matches:
+            last_import = import_matches[-1]
+            insertion_point = last_import.end()
+            updated_content = (
+                updated_content[:insertion_point]
+                + f"\n{import_line}"
+                + updated_content[insertion_point:]
+            )
+        elif "export default" in updated_content:
+            updated_content = f"{import_line}\n{updated_content}"
+        elif "module.exports" in updated_content:
+            updated_content = updated_content.replace(
+                "module.exports",
+                f"{require_line}\n\nmodule.exports",
+                1,
+            )
+        else:
+            return (
+                f"Skipped `{DependencyScaffoldUtils.display_path(vite_config_path, cwd)}`: "
+                "unable to add `@tailwindcss/vite` import"
+            )
+
+    if "tailwindcss()" not in updated_content:
+        updated_content, plugin_count = re.subn(
+            r"plugins\s*:\s*\[",
+            "plugins: [\n    tailwindcss(),",
+            updated_content,
+            count=1,
+        )
+        if plugin_count == 0:
+            return (
+                f"Skipped `{DependencyScaffoldUtils.display_path(vite_config_path, cwd)}`: "
+                "unable to find `plugins` array for Vite"
+            )
+
+    if updated_content == content:
+        return f"Kept existing `{DependencyScaffoldUtils.display_path(vite_config_path, cwd)}`"
+
+    vite_config_path.write_text(updated_content, encoding="utf-8")
+    return f"Updated `{DependencyScaffoldUtils.display_path(vite_config_path, cwd)}` with Tailwind Vite plugin"
 
 def _scaffold_tailwind_setup(cwd):
     messages = []
     has_plubo_layout = (cwd / "src/styles/app.scss").exists()
-
-    messages.append(
-        DependencyScaffoldUtils.copy_template_if_missing(
-            NODE_TEMPLATES_DIR / "tailwind.config.js",
-            cwd / "tailwind.config.js",
-            cwd,
-        )
-    )
-    messages.append(_ensure_postcss_tailwind(cwd))
+    messages.append(_ensure_vite_tailwind_plugin(cwd))
 
     if has_plubo_layout:
         messages.append(
@@ -209,20 +234,6 @@ def _scaffold_tailwind_setup(cwd):
             NODE_TEMPLATES_DIR / "app.css",
             cwd / "src/css/app.css",
             cwd,
-        )
-    )
-
-    messages.extend(
-        DependencyScaffoldUtils.ensure_package_json_scripts(
-            cwd,
-            {
-                "tailwind:build": "tailwindcss -i ./src/css/app.css -o ./assets/css/app.css --minify",
-                "tailwind:watch": "tailwindcss -i ./src/css/app.css -o ./assets/css/app.css --watch",
-            },
-            {
-                "build": "yarn tailwind:build",
-                "dev": "yarn tailwind:watch",
-            },
         )
     )
     return messages
