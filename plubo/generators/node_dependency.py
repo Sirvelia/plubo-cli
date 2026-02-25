@@ -153,7 +153,11 @@ def _find_vite_config_path(cwd):
 def _ensure_vite_tailwind_plugin(cwd):
     vite_config_path = _find_vite_config_path(cwd)
     if not vite_config_path:
-        return "Skipped Vite config update: no `vite.config.*` file found"
+        return DependencyScaffoldUtils.copy_template_if_missing(
+            NODE_TEMPLATES_DIR / "vite.config.js",
+            cwd / "vite.config.js",
+            cwd,
+        )
 
     content = vite_config_path.read_text(encoding="utf-8")
     updated_content = content
