@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import subprocess
 from pathlib import Path
 import fnmatch
 from plubo.utils import project, interface, colors
@@ -147,7 +148,7 @@ def rename_project(stdscr):
         interface.display_message(stdscr, "⚠️ Rename cancelled.", "error", 15)
     else:
         interface.display_message(stdscr, f"Renaming {old_name} to {new_name}... ⏳", "info", 15)
-        rename_plugin(old_name, new_name, plugin_directory)
+        rename_plugin(old_name, new_name, plugin_directory, stdscr=stdscr)
         interface.display_message(stdscr, "✅ Plugin renamed successfully!", "success", 16)
     
     stdscr.getch()  # Wait for user input before returning
@@ -189,7 +190,7 @@ def create_plugin(stdscr, new_name, wp_root):
         
         if project.run_command(command, plugins_directory, stdscr):
             interface.display_message(stdscr, f"✅ Successfully created {plugin_name}", "success", height - 3)
-            rename_plugin("plugin-placeholder", new_name, plugin_directory)
+            rename_plugin("plugin-placeholder", new_name, plugin_directory, stdscr=stdscr)
             # os.chdir(plugin_directory)  # Change directory to the newly created plugin folder
             stdscr.clear()
             activate_plugin(stdscr, plugin_name, plugin_directory)
@@ -208,7 +209,7 @@ def create_plugin(stdscr, new_name, wp_root):
     stdscr.getch()  # Wait user input
             
 
-def rename_plugin(old_name, new_name, plugin_root= Path(os.getcwd())):
+def rename_plugin(old_name, new_name, plugin_root= Path(os.getcwd()), stdscr=None):
     """Replaces the plugin name in all relevant files with correct casing."""
     parent_directory = plugin_root.parent  # The directory containing the plugin folder
     
@@ -246,6 +247,26 @@ def rename_plugin(old_name, new_name, plugin_root= Path(os.getcwd())):
     new_plugin_folder = parent_directory / new_name.lower().replace(" ", "-")  # Normalize new folder name
     if plugin_root.exists():
         plugin_root.rename(new_plugin_folder)
+
+    composer_json = new_plugin_folder / "composer.json"
+    if composer_json.exists():
+        command = (
+            ["lando", "composer", "dump-autoload"]
+            if is_lando_project_path(new_plugin_folder)
+            else ["composer", "dump-autoload"]
+        )
+        if stdscr:
+            project.run_command(command, new_plugin_folder, stdscr)
+        else:
+            subprocess.run(command, cwd=str(new_plugin_folder), check=True)
+
+
+def is_lando_project_path(start_path):
+    current_path = Path(start_path).resolve()
+    for directory in [current_path, *current_path.parents]:
+        if (directory / ".lando.yml").exists():
+            return True
+    return False
         
 def iter_files(root, pattern):
     for dirpath, dirnames, filenames in os.walk(root):
