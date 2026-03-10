@@ -1,6 +1,18 @@
 # plubo/cli/dispatcher.py
 import sys
-from plubo.cli.commands import add_component, add_entity, add_functionality, add_node_dependency, add_php_dependency, check_dependencies, create_plugin, init_repo, prepare_release, rename_plugin
+from plubo.cli.commands import (
+    add_component,
+    add_entity,
+    add_functionality,
+    add_node_dependency,
+    add_php_dependency,
+    check_dependencies,
+    create_plugin,
+    init_repo,
+    prepare_release,
+    rename_plugin,
+    set_plugin_headers,
+)
 import curses
 
 COMMANDS = {
@@ -14,6 +26,7 @@ COMMANDS = {
     'init-repo': init_repo.init_repo_command,
     'release': prepare_release.prepare_release_command,
     'rename': rename_plugin.rename_command,
+    'headers': set_plugin_headers.set_plugin_headers_command,
 }
 
 def _print_usage():

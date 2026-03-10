@@ -1,8 +1,8 @@
 import sys
 import subprocess
 import json
-import re
 from pathlib import Path
+from plubo.cli.commands.plugin_headers import HEADER_OPTION_TO_LABEL, apply_plugin_header_updates, find_main_plugin_file
 from plubo.generators.plugin import rename_plugin
 from plubo.generators.php_dependency import apply_post_install_actions, get_dependency_package, resolve_dependency
 from plubo.utils import project
@@ -20,17 +20,6 @@ BLADE_LOADER_PATHS = (
     "Includes/bladeloader.php",
     "includes/bladeloader.php",
 )
-HEADER_OPTION_TO_LABEL = {
-    "--plugin-name": "Plugin Name",
-    "--plugin-uri": "Plugin URI",
-    "--author": "Author",
-    "--author-uri": "Author URI",
-    "--description": "Description",
-    "--requires-plugins": "Requires Plugins",
-    "--version": "Version",
-}
-
-
 def _parse_create_args(args):
     use_lando = False
     use_blade = False
@@ -174,48 +163,6 @@ def _disable_blade_support(plugin_directory, use_lando):
     return messages
 
 
-def _find_main_plugin_file(plugin_directory, plugin_slug):
-    expected_file = plugin_directory / f"{plugin_slug}.php"
-    if expected_file.exists():
-        return expected_file
-
-    for php_file in plugin_directory.glob("*.php"):
-        try:
-            content = php_file.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
-
-        if "Plugin Name:" in content and "Text Domain:" in content:
-            return php_file
-
-    return None
-
-
-def _apply_plugin_header_updates(plugin_file, header_updates):
-    if not header_updates:
-        return []
-
-    content = plugin_file.read_text(encoding="utf-8")
-    header_match = re.search(r"/\*[\s\S]*?Plugin Name:[\s\S]*?\*/", content)
-    if not header_match:
-        return [f"Skipped header updates: no plugin header found in `{plugin_file.name}`"]
-
-    header_block = header_match.group(0)
-    updated_header = header_block
-
-    for field, value in header_updates.items():
-        pattern = re.compile(rf"(^\s*\*?\s*{re.escape(field)}\s*:\s*).*$", re.MULTILINE)
-        if pattern.search(updated_header):
-            updated_header = pattern.sub(lambda match: f"{match.group(1)}{value}", updated_header, count=1)
-            continue
-
-        updated_header = updated_header.replace("*/", f" * {field}: {value}\n */", 1)
-
-    updated_content = content[:header_match.start()] + updated_header + content[header_match.end():]
-    plugin_file.write_text(updated_content, encoding="utf-8")
-    return [f"Updated plugin headers in `{plugin_file.name}`"]
-
-
 def create_plugin_command(args):
     new_name, use_lando, use_blade, header_updates = _parse_create_args(args)
     wp_root = project.detect_wp_root()
@@ -240,9 +187,11 @@ def create_plugin_command(args):
     try:
         subprocess.run(command, cwd=str(target_directory), check=True)
         rename_plugin("plugin-placeholder", new_name, plugin_directory)
-        main_plugin_file = _find_main_plugin_file(plugin_directory, plugin_name)
+        main_plugin_file = find_main_plugin_file(plugin_directory, plugin_name)
         if main_plugin_file:
-            header_messages = _apply_plugin_header_updates(main_plugin_file, header_updates)
+            headers_updated, header_messages = apply_plugin_header_updates(main_plugin_file, header_updates)
+            if not headers_updated and header_updates:
+                header_messages = [f"Skipped header updates: {header_messages[0]}"]
         elif header_updates:
             header_messages = [f"Skipped header updates: main plugin file not found in `{plugin_directory}`"]
         else:
