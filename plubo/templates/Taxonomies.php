@@ -18,6 +18,6 @@ class Taxonomies
 
     public function register_taxonomies()
     {
-        // register_taxonomy( 'tax_slug', 'post_type', $args );
+
     }
 }

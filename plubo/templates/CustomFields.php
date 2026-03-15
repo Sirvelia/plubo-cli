@@ -27,6 +27,6 @@ class CustomFields
 
     public function register_fields()
     {
-        return;
+        
     }
 }
