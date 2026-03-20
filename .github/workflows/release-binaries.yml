@@ -203,11 +203,24 @@ jobs:
           path: release-assets/linux-packages
 
       - name: Publish GitHub release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            release-assets/*
-            release-assets/linux-packages/**/*
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            gh release create "${TAG_NAME}" --title "${TAG_NAME}" --generate-notes
+          fi
+
+          mapfile -t files < <(find release-assets -type f | sort)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No release asset files found."
+            exit 1
+          fi
+
+          gh release upload "${TAG_NAME}" "${files[@]}" --clobber
 
   deploy-apt-pages:
     name: Deploy apt repo to GitHub Pages
