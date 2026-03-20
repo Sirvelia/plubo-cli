@@ -1,4 +1,4 @@
-name: Release pb-cli Binaries
+name: Release pb-cli Assets
 
 on:
   push:
@@ -7,10 +7,12 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
-  build-and-publish:
-    name: Build and publish (${{ matrix.asset_suffix }})
+  build-binaries:
+    name: Build standalone (${{ matrix.asset_suffix }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -18,10 +20,24 @@ jobs:
         include:
           - runner: ubuntu-latest
             asset_suffix: linux-amd64
+            os: linux
+            arch: amd64
           - runner: ubuntu-24.04-arm
             asset_suffix: linux-arm64
+            os: linux
+            arch: arm64
+          - runner: macos-13
+            asset_suffix: macos-amd64
+            os: macos
+            arch: amd64
           - runner: macos-14
             asset_suffix: macos-arm64
+            os: macos
+            arch: arm64
+          - runner: windows-latest
+            asset_suffix: windows-amd64
+            os: windows
+            arch: amd64
 
     steps:
       - name: Checkout
@@ -41,21 +57,264 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          asset="pb-cli-${{ matrix.asset_suffix }}"
-          cp dist/pb-cli "dist/${asset}"
-          chmod +x "dist/${asset}"
+          bin_path="dist/pb-cli"
+          ext=""
 
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "dist/${asset}" > "dist/${asset}.sha256"
-          else
-            shasum -a 256 "dist/${asset}" > "dist/${asset}.sha256"
+          if [ -f "dist/pb-cli.exe" ]; then
+            bin_path="dist/pb-cli.exe"
+            ext=".exe"
           fi
 
+          asset="pb-cli-${{ matrix.asset_suffix }}${ext}"
+          cp "${bin_path}" "dist/${asset}"
+
+          if [ "${{ matrix.os }}" != "windows" ]; then
+            chmod +x "dist/${asset}"
+          fi
+
+          python -c "import hashlib,pathlib; asset='${asset}'; p=pathlib.Path('dist')/asset; h=hashlib.sha256(p.read_bytes()).hexdigest(); (p.parent/f'{asset}.sha256').write_text(f'{h}  {asset}\n', encoding='utf-8')"
+
           echo "asset=${asset}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.asset_suffix }}
+          path: |
+            dist/${{ steps.prepare.outputs.asset }}
+            dist/${{ steps.prepare.outputs.asset }}.sha256
+
+  package-linux:
+    name: Build Linux packages
+    runs-on: ubuntu-latest
+    needs: build-binaries
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download binary artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Install packaging dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev apt-utils
+
+      - name: Generate Linux distribution assets
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+          REPO_SLUG: ${{ github.repository }}
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          APT_GPG_KEY_ID: ${{ secrets.APT_GPG_KEY_ID }}
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+
+          version="${RELEASE_VERSION#v}"
+          linux_amd64_bin="artifacts/pb-cli-linux-amd64"
+          linux_arm64_bin="artifacts/pb-cli-linux-arm64"
+
+          if [ ! -f "${linux_amd64_bin}" ] || [ ! -f "${linux_arm64_bin}" ]; then
+            echo "Expected Linux binaries not found in artifacts/"
+            ls -lah artifacts
+            exit 1
+          fi
+
+          ./scripts/package-deb.sh \
+            --binary "${linux_amd64_bin}" \
+            --version "${version}" \
+            --arch amd64 \
+            --output-dir dist
+
+          ./scripts/package-deb.sh \
+            --binary "${linux_arm64_bin}" \
+            --version "${version}" \
+            --arch arm64 \
+            --output-dir dist
+
+          ./scripts/build-appimage.sh \
+            --binary "${linux_amd64_bin}" \
+            --version "${version}" \
+            --arch x86_64 \
+            --output-dir dist
+
+          sha_x86_64="$(awk '{print $1}' artifacts/pb-cli-linux-amd64.sha256)"
+          sha_aarch64="$(awk '{print $1}' artifacts/pb-cli-linux-arm64.sha256)"
+
+          ./scripts/generate-aur-metadata.sh \
+            --version "${version}" \
+            --repo "${REPO_SLUG}" \
+            --x86_64-sha "${sha_x86_64}" \
+            --aarch64-sha "${sha_aarch64}" \
+            --output-dir dist/aur
+
+          ./scripts/generate-apt-repo.sh \
+            --deb "dist/pb-cli_${version}_amd64.deb" \
+            --deb "dist/pb-cli_${version}_arm64.deb" \
+            --repo-dir dist/apt-repo \
+            --codename stable \
+            --component main \
+            --origin pb-cli \
+            --label pb-cli \
+            --description "pb-cli apt repository"
+
+          tar -C dist -czf "dist/pb-cli-apt-repo-${version}.tar.gz" apt-repo
+
+          sha256sum dist/*.deb dist/*.AppImage dist/*.tar.gz dist/aur/PKGBUILD dist/aur/.SRCINFO > dist/linux-packages.sha256
+
+      - name: Upload Linux package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            dist/*.deb
+            dist/*.AppImage
+            dist/*.tar.gz
+            dist/linux-packages.sha256
+            dist/aur/PKGBUILD
+            dist/aur/.SRCINFO
+
+  publish-release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs:
+      - build-binaries
+      - package-linux
+
+    steps:
+      - name: Download binary artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: release-assets
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Download Linux package artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: linux-packages
+          path: release-assets/linux-packages
 
       - name: Publish GitHub release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/${{ steps.prepare.outputs.asset }}
-            dist/${{ steps.prepare.outputs.asset }}.sha256
+            release-assets/*
+            release-assets/linux-packages/**/*
+
+  deploy-apt-pages:
+    name: Deploy apt repo to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: package-linux
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download Linux package artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: linux-packages
+          path: packages
+
+      - name: Install apt repo dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev apt-utils gnupg
+
+      - name: Build GitHub Pages apt repository
+        shell: bash
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          APT_GPG_KEY_ID: ${{ secrets.APT_GPG_KEY_ID }}
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t debs < <(find packages -type f -name '*.deb' | sort)
+          if [ "${#debs[@]}" -eq 0 ]; then
+            echo "No .deb artifacts found in downloaded package artifacts."
+            find packages -maxdepth 4 -type f | sort
+            exit 1
+          fi
+
+          if [ -z "${APT_GPG_PRIVATE_KEY:-}" ] || [ -z "${APT_GPG_KEY_ID:-}" ]; then
+            echo "Missing APT signing secrets. Set APT_GPG_PRIVATE_KEY and APT_GPG_KEY_ID."
+            exit 1
+          fi
+
+          deb_args=()
+          for deb in "${debs[@]}"; do
+            deb_args+=(--deb "${deb}")
+          done
+
+          mkdir -p public
+          ./scripts/generate-apt-repo.sh \
+            "${deb_args[@]}" \
+            --repo-dir public/apt \
+            --codename stable \
+            --component main \
+            --origin pb-cli \
+            --label pb-cli \
+            --description "pb-cli apt repository (GitHub Pages)"
+
+          key_home="$(mktemp -d)"
+          export GNUPGHOME="${key_home}"
+          chmod 700 "${GNUPGHOME}"
+          if ! printf '%s' "${APT_GPG_PRIVATE_KEY}" | gpg --batch --import >/dev/null 2>&1; then
+            printf '%s' "${APT_GPG_PRIVATE_KEY}" | base64 --decode | gpg --batch --import >/dev/null
+          fi
+
+          gpg --batch --yes --output public/apt/pb-cli-archive-keyring.gpg --export "${APT_GPG_KEY_ID}"
+          gpg --batch --yes --armor --output public/apt/pb-cli-archive-keyring.asc --export "${APT_GPG_KEY_ID}"
+          rm -rf "${key_home}"
+
+          repo_owner="${GITHUB_REPOSITORY%%/*}"
+          repo_name="${GITHUB_REPOSITORY#*/}"
+          apt_base_url="https://${repo_owner}.github.io/${repo_name}/apt"
+
+          cat > public/apt/README.txt <<EOF
+          pb-cli apt repository (GitHub Pages)
+
+          Base URL:
+          ${apt_base_url}
+
+          Example setup (amd64):
+            sudo mkdir -p /etc/apt/keyrings
+            curl -fsSL ${apt_base_url}/pb-cli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/pb-cli-archive-keyring.gpg >/dev/null
+            echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/pb-cli-archive-keyring.gpg] ${apt_base_url} stable main" | sudo tee /etc/apt/sources.list.d/pb-cli.list >/dev/null
+            sudo apt update
+            sudo apt install pb-cli
+          EOF
+
+          touch public/.nojekyll
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: public
+
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
