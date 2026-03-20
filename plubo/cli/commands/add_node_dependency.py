@@ -34,7 +34,7 @@ def _build_commands(packages):
 def add_node_dependency_command(args):
     if not args:
         print("Usage: plubo node-dep [--dev|-D] <package|preset>")
-        print("Example presets: alpinejs, tailwind-css, daisy-ui, hikeflow")
+        print("Example presets: alpinejs, tailwind-css, shadcn, daisy-ui, hikeflow")
         print("Use --dev/-D to install custom packages as devDependencies.")
         sys.exit(1)
 
