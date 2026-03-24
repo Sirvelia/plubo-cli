@@ -13,6 +13,7 @@ from plubo.cli.commands import (
     prepare_release,
     rename_plugin,
     set_plugin_headers,
+    version,
 )
 import curses
 
@@ -29,6 +30,7 @@ COMMANDS = {
     'release': prepare_release.prepare_release_command,
     'rename': rename_plugin.rename_command,
     'headers': set_plugin_headers.set_plugin_headers_command,
+    'version': version.version_command,
 }
 
 def _print_usage():

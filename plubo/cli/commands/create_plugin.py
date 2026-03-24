@@ -4,11 +4,22 @@ import json
 from pathlib import Path
 from plubo.cli.commands.plugin_headers import HEADER_OPTION_TO_LABEL, apply_plugin_header_updates, find_main_plugin_file
 from plubo.generators.plugin import rename_plugin
-from plubo.generators.php_dependency import apply_post_install_actions, get_dependency_package, resolve_dependency
+from plubo.generators.php_dependency import (
+    apply_post_install_actions as apply_php_post_install_actions,
+    get_dependency_package,
+    resolve_dependency as resolve_php_dependency,
+)
+from plubo.generators.node_dependency import (
+    apply_post_install_actions as apply_node_post_install_actions,
+    get_dependency_packages,
+    resolve_dependency as resolve_node_dependency,
+)
 from plubo.utils import project
 
 USAGE = (
     "Usage: pb-cli create <plugin_name> [--lando] [--blade] "
+    "[--php-dep <package|preset>] [--composer-dep <package|preset>] "
+    "[--node-dep <package|preset>] "
     "[--plugin-name <name>] [--plugin-uri <url>] [--author <name>] "
     "[--author-uri <url>] [--description <text>] "
     "[--requires-plugins <plugins>] [--version <version>]"
@@ -23,6 +34,8 @@ BLADE_LOADER_PATHS = (
 def _parse_create_args(args):
     use_lando = False
     use_blade = False
+    php_dependencies = []
+    node_dependencies = []
     name_parts = []
     header_updates = {}
     index = 0
@@ -35,6 +48,42 @@ def _parse_create_args(args):
             continue
         if arg == "--blade":
             use_blade = True
+            index += 1
+            continue
+
+        if arg in {"--php-dep", "--composer-dep", "--node-dep"}:
+            if index + 1 >= len(args):
+                print(f"❌ Missing value for option: {arg}")
+                print(USAGE)
+                sys.exit(1)
+
+            value = args[index + 1].strip()
+            if not value:
+                print(f"❌ Empty value is not allowed for option: {arg}")
+                print(USAGE)
+                sys.exit(1)
+
+            if arg in {"--php-dep", "--composer-dep"}:
+                php_dependencies.append(value)
+            else:
+                node_dependencies.append(value)
+
+            index += 2
+            continue
+
+        if arg.startswith("--php-dep=") or arg.startswith("--composer-dep=") or arg.startswith("--node-dep="):
+            option, value = arg.split("=", 1)
+            value = value.strip()
+            if not value:
+                print(f"❌ Empty value is not allowed for option: {option}")
+                print(USAGE)
+                sys.exit(1)
+
+            if option in {"--php-dep", "--composer-dep"}:
+                php_dependencies.append(value)
+            else:
+                node_dependencies.append(value)
+
             index += 1
             continue
 
@@ -85,7 +134,7 @@ def _parse_create_args(args):
         print(USAGE)
         sys.exit(1)
 
-    return new_name, use_lando, use_blade, header_updates
+    return new_name, use_lando, use_blade, header_updates, php_dependencies, node_dependencies
 
 
 def _confirm_create_in_current_directory():
@@ -114,24 +163,110 @@ def _load_composer_require(plugin_directory):
         return {}
     return required_packages
 
-def _enable_blade_support(plugin_directory, use_lando):
+def _composer_package_key(package_spec):
+    package_spec = (package_spec or "").strip()
+    if not package_spec:
+        return package_spec
+
+    first_token = package_spec.split()[0]
+    if ":" in first_token and "/" in first_token:
+        return first_token.split(":", 1)[0]
+    return first_token
+
+def _composer_require_command(use_lando, package_spec):
+    package_tokens = package_spec.split()
+    if use_lando:
+        return ["lando", "composer", "require"] + package_tokens
+    return ["composer", "require"] + package_tokens
+
+def _build_node_install_commands(packages):
+    regular_packages = [package["name"] for package in packages if not package["dev"]]
+    dev_packages = [package["name"] for package in packages if package["dev"]]
+    commands = []
+
+    if regular_packages:
+        commands.append(["yarn", "add"] + regular_packages)
+    if dev_packages:
+        commands.append(["yarn", "add", "--dev"] + dev_packages)
+
+    return commands
+
+def _merge_node_packages(packages):
+    ordered_names = []
+    package_dev_flags = {}
+
+    for package in packages:
+        package_name = package.get("name")
+        if not package_name:
+            continue
+
+        package_is_dev = bool(package.get("dev", False))
+        if package_name not in package_dev_flags:
+            ordered_names.append(package_name)
+            package_dev_flags[package_name] = package_is_dev
+        else:
+            package_dev_flags[package_name] = package_dev_flags[package_name] and package_is_dev
+
+    return [{"name": package_name, "dev": package_dev_flags[package_name]} for package_name in ordered_names]
+
+def _is_blade_requested(php_dependency_inputs):
+    for dependency_input in php_dependency_inputs:
+        dependency_option, _ = resolve_php_dependency(dependency_input)
+        package_name = get_dependency_package(dependency_option)
+        if _composer_package_key(package_name) == BLADE_PACKAGE:
+            return True
+    return False
+
+def _install_php_dependencies(plugin_directory, use_lando, php_dependency_inputs):
     messages = []
-    dependency_option, _ = resolve_dependency("bladeone")
-    package_name = get_dependency_package(dependency_option) or BLADE_PACKAGE
-    required_packages = _load_composer_require(plugin_directory)
+    seen_package_keys = set()
 
-    if package_name not in required_packages:
-        command = (
-            ["lando", "composer", "require", package_name]
-            if use_lando
-            else ["composer", "require", package_name]
-        )
+    for dependency_input in php_dependency_inputs:
+        dependency_option, _ = resolve_php_dependency(dependency_input)
+        package_name = get_dependency_package(dependency_option)
+        if not package_name:
+            continue
+
+        package_key = _composer_package_key(package_name)
+        if package_key in seen_package_keys:
+            continue
+        seen_package_keys.add(package_key)
+
+        required_packages = _load_composer_require(plugin_directory)
+        if package_key not in required_packages:
+            command = _composer_require_command(use_lando, package_name)
+            subprocess.run(command, cwd=str(plugin_directory), check=True)
+            messages.append(f"Installed `{package_name}`")
+        else:
+            messages.append(f"Kept existing `{package_key}` dependency")
+
+        messages.extend(apply_php_post_install_actions(dependency_option, cwd=plugin_directory))
+
+    return messages
+
+def _install_node_dependencies(plugin_directory, node_dependency_inputs):
+    messages = []
+    dependency_options = []
+    packages_to_install = []
+
+    for dependency_input in node_dependency_inputs:
+        dependency_option, _ = resolve_node_dependency(dependency_input)
+        dependency_options.append(dependency_option)
+        packages_to_install.extend(get_dependency_packages(dependency_option))
+
+    merged_packages = _merge_node_packages(packages_to_install)
+    commands = _build_node_install_commands(merged_packages)
+
+    for command in commands:
         subprocess.run(command, cwd=str(plugin_directory), check=True)
-        messages.append(f"Installed `{package_name}`")
-    else:
-        messages.append(f"Kept existing `{package_name}` dependency")
 
-    messages.extend(apply_post_install_actions(dependency_option, cwd=plugin_directory))
+    if merged_packages:
+        package_display = ", ".join(package["name"] for package in merged_packages)
+        messages.append(f"Installed `{package_display}`")
+
+    for dependency_option in dependency_options:
+        messages.extend(apply_node_post_install_actions(dependency_option, cwd=plugin_directory))
+
     return messages
 
 def _disable_blade_support(plugin_directory, use_lando):
@@ -164,7 +299,14 @@ def _disable_blade_support(plugin_directory, use_lando):
 
 
 def create_plugin_command(args):
-    new_name, use_lando, use_blade, header_updates = _parse_create_args(args)
+    (
+        new_name,
+        use_lando,
+        use_blade,
+        header_updates,
+        php_dependency_inputs,
+        node_dependency_inputs,
+    ) = _parse_create_args(args)
     wp_root = project.detect_wp_root()
 
     if wp_root:
@@ -174,6 +316,12 @@ def create_plugin_command(args):
             print("❌ Aborted.")
             sys.exit(1)
         target_directory = Path.cwd()
+
+    try:
+        target_directory.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        print(f"❌ Failed to prepare target directory `{target_directory}`: {error}")
+        sys.exit(1)
 
     plugin_name = new_name.lower().replace(" ", "-")
     plugin_directory = target_directory / plugin_name
@@ -196,19 +344,31 @@ def create_plugin_command(args):
             header_messages = [f"Skipped header updates: main plugin file not found in `{plugin_directory}`"]
         else:
             header_messages = []
-        post_create_messages = (
-            _enable_blade_support(plugin_directory, use_lando)
-            if use_blade
-            else _disable_blade_support(plugin_directory, use_lando)
-        )
+
+        blade_requested = _is_blade_requested(php_dependency_inputs)
+        php_dependencies = list(php_dependency_inputs)
+        if use_blade and not blade_requested:
+            php_dependencies.append("bladeone")
+
+        post_create_messages = []
+        post_create_messages.extend(_install_php_dependencies(plugin_directory, use_lando, php_dependencies))
+        post_create_messages.extend(_install_node_dependencies(plugin_directory, node_dependency_inputs))
+
+        if not use_blade and not blade_requested:
+            post_create_messages.extend(_disable_blade_support(plugin_directory, use_lando))
+
         print(f"✅ Plugin created and renamed to: {plugin_name}")
         for header_message in header_messages:
             print(f"ℹ️ {header_message}")
         for post_create_message in post_create_messages:
             print(f"ℹ️ {post_create_message}")
     except FileNotFoundError as error:
-        missing_command = error.filename or command[0]
-        print(f"❌ Command not found: {missing_command}")
+        missing_resource = str(error.filename) if error.filename else ""
+        if missing_resource in {str(target_directory), str(plugin_directory)}:
+            print(f"❌ Directory not found: {missing_resource}")
+        else:
+            missing_command = missing_resource or command[0]
+            print(f"❌ Command not found: {missing_command}")
         sys.exit(1)
     except subprocess.CalledProcessError as error:
         failed_command = error.cmd if isinstance(error.cmd, list) else [str(error.cmd)]

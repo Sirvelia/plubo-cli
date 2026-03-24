@@ -12,6 +12,7 @@ NODE_TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "node"
 
 DEPENDENCY_OPTIONS = {
     "ALPINE.JS": {
+        "aliases": ["alpinejs", "alpine-js"],
         "packages": [
             {"name": "alpinejs", "dev": False},
             {"name": "@types/alpinejs", "dev": True},
@@ -19,6 +20,7 @@ DEPENDENCY_OPTIONS = {
         "post_install": ["scaffold_alpine_bootstrap"],
     },
     "TAILWIND CSS": {
+        "aliases": ["tailwindcss", "tailwind-css", "tailwind"],
         "packages": [
             {"name": "tailwindcss", "dev": True},
             {"name": "@tailwindcss/vite", "dev": True},
@@ -26,6 +28,7 @@ DEPENDENCY_OPTIONS = {
         "post_install": ["scaffold_tailwind_setup"],
     },
     "SHADCN": {
+        "aliases": ["shadcn-ui", "shadcn/ui", "shadcnui"],
         "packages": [
             {"name": "tailwind-merge", "dev": True},
             {"name": "clsx", "dev": True},
@@ -33,11 +36,13 @@ DEPENDENCY_OPTIONS = {
         "post_install": ["scaffold_shadcn_setup"],
     },
     "DAISY UI": {
+        "aliases": ["daisyui", "daisy-ui"],
         "packages": [
             {"name": "daisyui@latest", "dev": True},
         ],
     },
     "HIKEFLOW": {
+        "aliases": ["hike-flow"],
         "packages": [
             {"name": "hikeflow", "dev": False},
         ],
@@ -77,16 +82,48 @@ def get_post_install_actions(dependency_option):
     actions = dependency_option.get("post_install", [])
     return [action for action in actions if isinstance(action, str)]
 
+def _strip_npm_version(token):
+    token = (token or "").strip()
+    if not token:
+        return token
+
+    if token.startswith("@"):
+        last_at_index = token.rfind("@")
+        slash_index = token.find("/")
+        if slash_index >= 0 and last_at_index > slash_index:
+            return token[:last_at_index]
+        return token
+
+    return token.split("@", 1)[0]
+
+def _normalized_lookup_tokens(value):
+    raw = (value or "").strip()
+    if not raw:
+        return set()
+
+    first_token = raw.split()[0]
+    candidates = {
+        raw,
+        first_token,
+        _strip_npm_version(raw),
+        _strip_npm_version(first_token),
+    }
+    return {DependencyScaffoldUtils.normalize_token(candidate) for candidate in candidates if candidate}
+
 def resolve_dependency(value):
     """Resolve a preset from user input; fallback to custom package tokens."""
-    normalized_value = DependencyScaffoldUtils.normalize_token(value)
+    normalized_lookup_tokens = _normalized_lookup_tokens(value)
 
     for option_name, dependency_option in DEPENDENCY_OPTIONS.items():
         packages = get_dependency_packages(dependency_option)
         if not packages:
             continue
 
-        if normalized_value == DependencyScaffoldUtils.normalize_token(option_name):
+        preset_aliases = [option_name]
+        preset_aliases.extend(alias for alias in dependency_option.get("aliases", []) if isinstance(alias, str))
+        preset_tokens = {DependencyScaffoldUtils.normalize_token(alias) for alias in preset_aliases}
+
+        if normalized_lookup_tokens & preset_tokens:
             return dependency_option, True
 
     return {"packages": [{"name": package_name, "dev": False} for package_name in value.split()]}, False

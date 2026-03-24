@@ -1,6 +1,7 @@
 import curses
 import textwrap
 from plubo.utils import project
+from plubo.version import get_version
 
 # PB-CLI Game Boy ASCII Art
 PB_CLI_ASCII = [
@@ -57,7 +58,7 @@ def draw_background(stdscr, title=None):
             stdscr.addstr(text_position, (width - len(wp_text)) // 2, wp_text, curses.color_pair(3) | curses.A_DIM)
 
     # Display the version at the bottom
-    version_text = "plubo-cli v0.1"
+    version_text = f"plubo-cli v{get_version()}"
     stdscr.addstr(height - 4, (width - len(version_text)) // 2, version_text, curses.color_pair(3))
 
     stdscr.refresh()
@@ -123,7 +124,7 @@ def render_menu(stdscr, menu_options, current_row, height, width):
             stdscr.addstr(y, x, option, curses.color_pair(1))
     
     # Display the version at the bottom
-    version_text = "plubo-cli v0.1"
+    version_text = f"plubo-cli v{get_version()}"
     stdscr.addstr(height - 3, (width - len(version_text)) // 2, version_text, curses.color_pair(3))
 
     stdscr.refresh()
